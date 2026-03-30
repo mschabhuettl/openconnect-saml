@@ -61,13 +61,11 @@ def run(args):
         if args.authenticate == "json":
             print(json.dumps(details, indent=4))
         elif args.authenticate == "shell":
-            print(
-                "\n".join(f"{k.upper()}={shlex.quote(v)}" for k, v in details.items())
-            )
+            print("\n".join(f"{k.upper()}={shlex.quote(v)}" for k, v in details.items()))
         return 0
 
     try:
-        return run_openconnect(
+        rc = run_openconnect(
             auth_response,
             selected_profile,
             args.proxy,
@@ -75,7 +73,9 @@ def run(args):
             args.openconnect_args,
             no_sudo=getattr(args, "no_sudo", False),
             csd_wrapper=getattr(args, "csd_wrapper", None),
+            on_connect=cfg.on_connect,
         )
+        return rc
     except KeyboardInterrupt:
         logger.warn("CTRL-C pressed, exiting")
         return 0
@@ -94,9 +94,7 @@ def configure_logger(logger, level):
         logger_factory=structlog.stdlib.LoggerFactory(),
     )
 
-    formatter = structlog.stdlib.ProcessorFormatter(
-        processor=structlog.dev.ConsoleRenderer()
-    )
+    formatter = structlog.stdlib.ProcessorFormatter(processor=structlog.dev.ConsoleRenderer())
 
     handler = logging.StreamHandler()
     handler.setFormatter(formatter)
@@ -143,13 +141,9 @@ async def _run(args, cfg):
         if not selected_profile:
             raise ValueError("No profile selected", 18)
     elif args.server:
-        selected_profile = config.HostProfile(
-            args.server, args.usergroup, args.authgroup
-        )
+        selected_profile = config.HostProfile(args.server, args.usergroup, args.authgroup)
     else:
-        raise ValueError(
-            "Cannot determine server address. Invalid arguments specified.", 19
-        )
+        raise ValueError("Cannot determine server address. Invalid arguments specified.", 19)
 
     cfg.default_profile = config.HostProfile(
         selected_profile.address, selected_profile.user_group, selected_profile.name
@@ -157,8 +151,31 @@ async def _run(args, cfg):
 
     display_mode = config.DisplayMode[args.browser_display_mode.upper()]
 
+    # Resolve timeout: CLI > config > default
+    timeout = getattr(args, "timeout", None) or cfg.timeout or 30
+
+    # Resolve window size: CLI > config > default
+    window_size = getattr(args, "window_size", None)
+    if window_size:
+        try:
+            w, h = window_size.split("x")
+            cfg.window_width = int(w)
+            cfg.window_height = int(h)
+        except (ValueError, AttributeError):
+            logger.warning("Invalid --window-size format, using defaults", value=window_size)
+
+    ssl_legacy = getattr(args, "ssl_legacy", False)
+
     auth_response = await authenticate_to(
-        selected_profile, args.proxy, credentials, display_mode, args.ac_version
+        selected_profile,
+        args.proxy,
+        credentials,
+        display_mode,
+        args.ac_version,
+        ssl_legacy=ssl_legacy,
+        timeout=timeout,
+        window_width=cfg.window_width,
+        window_height=cfg.window_height,
     )
 
     if credentials:
@@ -166,6 +183,10 @@ async def _run(args, cfg):
 
     if args.on_disconnect and not cfg.on_disconnect:
         cfg.on_disconnect = args.on_disconnect
+
+    on_connect = getattr(args, "on_connect", "")
+    if on_connect and not cfg.on_connect:
+        cfg.on_connect = on_connect
 
     return auth_response, selected_profile
 
@@ -189,12 +210,33 @@ async def select_profile(profile_list):
     return selection
 
 
-def authenticate_to(host, proxy, credentials, display_mode, version):
+def authenticate_to(
+    host,
+    proxy,
+    credentials,
+    display_mode,
+    version,
+    ssl_legacy=False,
+    timeout=30,
+    window_width=800,
+    window_height=600,
+):
     logger.info("Authenticating to VPN endpoint", name=host.name, address=host.address)
-    return Authenticator(host, proxy, credentials, version).authenticate(display_mode)
+    return Authenticator(
+        host,
+        proxy,
+        credentials,
+        version,
+        ssl_legacy=ssl_legacy,
+        timeout=timeout,
+        window_width=window_width,
+        window_height=window_height,
+    ).authenticate(display_mode)
 
 
-def run_openconnect(auth_info, host, proxy, version, args, no_sudo=False, csd_wrapper=None):
+def run_openconnect(
+    auth_info, host, proxy, version, args, no_sudo=False, csd_wrapper=None, on_connect=""
+):
     superuser_cmd = None
 
     if os.name == "nt":
@@ -204,9 +246,7 @@ def run_openconnect(auth_info, host, proxy, version, args, no_sudo=False, csd_wr
             logger.error("OpenConnect must be run as Administrator on Windows, exiting")
             return 20
     elif not no_sudo:
-        superuser_cmd = next(
-            (prog for prog in ("doas", "sudo") if shutil.which(prog)), None
-        )
+        superuser_cmd = next((prog for prog in ("doas", "sudo") if shutil.which(prog)), None)
         if not superuser_cmd:
             logger.error(
                 "Cannot find suitable program to execute as superuser (doas/sudo), exiting"
@@ -214,9 +254,7 @@ def run_openconnect(auth_info, host, proxy, version, args, no_sudo=False, csd_wr
             return 20
 
     user_agent = (
-        f"AnyConnect Win {version}"
-        if os.name == "nt"
-        else f"AnyConnect Linux_64 {version}"
+        f"AnyConnect Win {version}" if os.name == "nt" else f"AnyConnect Linux_64 {version}"
     )
     openconnect_args = [
         "openconnect",
@@ -244,7 +282,28 @@ def run_openconnect(auth_info, host, proxy, version, args, no_sudo=False, csd_wr
 
     session_token = auth_info.session_token.encode("utf-8")
     logger.debug("Starting OpenConnect", command_line=command_line)
-    return subprocess.run(command_line, input=session_token).returncode
+
+    if on_connect:
+        # Run on-connect script via openconnect's --script mechanism would
+        # conflict with user-provided scripts, so we run it separately after
+        # openconnect is started. Use Popen for non-blocking openconnect.
+        proc = subprocess.Popen(command_line, stdin=subprocess.PIPE)
+        proc.stdin.write(session_token)
+        proc.stdin.close()
+        handle_connect(on_connect)
+        return proc.wait()
+    else:
+        return subprocess.run(command_line, input=session_token).returncode
+
+
+def handle_connect(command):
+    if command:
+        logger.info("Running on-connect command", command_line=command)
+        try:
+            return subprocess.run(command, timeout=30, shell=True).returncode
+        except subprocess.TimeoutExpired:
+            logger.warning("On-connect command timed out after 30s", command_line=command)
+            return 1
 
 
 def handle_disconnect(command):

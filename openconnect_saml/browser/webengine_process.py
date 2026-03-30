@@ -34,9 +34,7 @@ def configure_webengine_logger():
         ],
         logger_factory=structlog.stdlib.LoggerFactory(),
     )
-    formatter = structlog.stdlib.ProcessorFormatter(
-        processor=structlog.dev.ConsoleRenderer()
-    )
+    formatter = structlog.stdlib.ProcessorFormatter(processor=structlog.dev.ConsoleRenderer())
     handler = _logging.StreamHandler(sys.stderr)
     handler.setFormatter(formatter)
     root_logger = _logging.getLogger()
@@ -68,13 +66,15 @@ class SetCookie:
 
 
 class Process(multiprocessing.Process):
-    def __init__(self, proxy, display_mode):
+    def __init__(self, proxy, display_mode, window_width=800, window_height=600):
         super().__init__()
 
         self._commands = multiprocessing.Queue()
         self._states = multiprocessing.Queue()
         self.proxy = proxy
         self.display_mode = display_mode
+        self.window_width = window_width
+        self.window_height = window_height
 
     def authenticate_at(self, url, credentials):
         self._commands.put(StartupInfo(url, credentials))
@@ -128,6 +128,7 @@ class Process(multiprocessing.Process):
 
         force_python_execution.timeout.connect(ignore)
         web = WebBrowser(cfg.auto_fill_rules, self._states.put, profile)
+        web.resize(self.window_width, self.window_height)
 
         startup_info = self._commands.get()
         logger.info("Browser started", startup_info=startup_info)
@@ -239,9 +240,7 @@ class WebPopupWindow(QWidget):
         self._view.setPage(QWebEnginePage(profile, self._view))
 
         self._view.titleChanged.connect(super().setWindowTitle)
-        self._view.page().geometryChangeRequested.connect(
-            self.handleGeometryChangeRequested
-        )
+        self._view.page().geometryChangeRequested.connect(self.handleGeometryChangeRequested)
         self._view.page().windowCloseRequested.connect(super().close)
 
     def view(self):

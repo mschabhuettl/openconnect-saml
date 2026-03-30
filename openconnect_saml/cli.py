@@ -80,14 +80,18 @@ def create_argparser():
     )
 
     parser.add_argument(
+        "--on-connect",
+        help="Command/script to run after VPN connection is established",
+        default="",
+    )
+
+    parser.add_argument(
         "--on-disconnect",
         help="Command to run when disconnecting from VPN server",
         default="",
     )
 
-    parser.add_argument(
-        "-V", "--version", action="version", version=f"%(prog)s {__version__}"
-    )
+    parser.add_argument("-V", "--version", action="version", version=f"%(prog)s {__version__}")
 
     parser.add_argument(
         "--ac-version",
@@ -137,6 +141,28 @@ def create_argparser():
         help="Path to CSD hostscan wrapper script, passed to openconnect --csd-wrapper",
         default=None,
     )
+    connection_group.add_argument(
+        "--ssl-legacy",
+        dest="ssl_legacy",
+        help="Enable SSL legacy renegotiation for servers that require it (#81)",
+        action="store_true",
+        default=False,
+    )
+    connection_group.add_argument(
+        "--timeout",
+        dest="timeout",
+        help="HTTP request timeout in seconds (default: 30)",
+        type=int,
+        default=None,
+    )
+
+    ui_group = parser.add_argument_group("UI options")
+    ui_group.add_argument(
+        "--window-size",
+        dest="window_size",
+        help="Browser window size as WIDTHxHEIGHT (e.g. 1000x800, default: 800x600)",
+        default=None,
+    )
     return parser
 
 
@@ -174,12 +200,8 @@ def main():
     parser = create_argparser()
     args = parser.parse_args()
 
-    if (args.profile_path or args.use_profile_selector) and (
-        args.server or args.usergroup
-    ):
-        parser.error(
-            "--profile/--profile-selector and --server/--usergroup are mutually exclusive"
-        )
+    if (args.profile_path or args.use_profile_selector) and (args.server or args.usergroup):
+        parser.error("--profile/--profile-selector and --server/--usergroup are mutually exclusive")
 
     if not args.profile_path and not args.server and not config.load().default_profile:
         if os.path.exists("/opt/cisco/anyconnect/profile"):
@@ -190,9 +212,7 @@ def main():
             )
 
     if args.use_profile_selector and not args.profile_path:
-        parser.error(
-            "No AnyConnect profile can be found. --profile argument is required."
-        )
+        parser.error("No AnyConnect profile can be found. --profile argument is required.")
 
     return app.run(args)
 

@@ -48,7 +48,8 @@ openconnect-saml = "openconnect_saml.cli:main"
 [project.urls]
 Homepage = "https://github.com/mschabhuettl/openconnect-saml"
 Repository = "https://github.com/mschabhuettl/openconnect-saml"
-Issues = "https://github.com/mschabhuettl/openconnect-saml/issues"
+"Bug Tracker" = "https://github.com/mschabhuettl/openconnect-saml/issues"
+Changelog = "https://github.com/mschabhuettl/openconnect-saml/releases"
 
 [tool.ruff]
 target-version = "py310"
