@@ -1,7 +1,9 @@
 import socket
+import ssl
 
 import attr
 import requests
+import requests.adapters
 import structlog
 from lxml import etree, objectify
 
@@ -11,12 +13,26 @@ logger = structlog.get_logger()
 
 
 class Authenticator:
-    def __init__(self, host, proxy=None, credentials=None, version=None):
+    def __init__(
+        self,
+        host,
+        proxy=None,
+        credentials=None,
+        version=None,
+        ssl_legacy=False,
+        timeout=30,
+        window_width=800,
+        window_height=600,
+    ):
         self.host = host
         self.proxy = proxy
         self.credentials = credentials
         self.version = version
-        self.session = create_http_session(proxy, version)
+        self.timeout = timeout
+        self.ssl_legacy = ssl_legacy
+        self.window_width = window_width
+        self.window_height = window_height
+        self.session = create_http_session(proxy, version, ssl_legacy=ssl_legacy)
 
     async def authenticate(self, display_mode):
         self._detect_authentication_target_url()
@@ -28,9 +44,15 @@ class Authenticator:
             response = self._start_authentication(no_cert=True)
 
         if not isinstance(response, AuthRequestResponse):
+            extra = {}
+            if isinstance(response, UnexpectedResponse):
+                extra["response_type"] = response.response_type
+                extra["raw_preview"] = response.raw_content[:500].decode("utf-8", errors="replace")
             logger.error(
-                "Could not start authentication. Invalid response type in current state",
+                "Could not start authentication. Invalid response type in current state. "
+                "If this happens after 2FA, your server may use an unsupported auth flow (#121)",
                 response=response,
+                **extra,
             )
             raise AuthenticationError(response)
 
@@ -44,15 +66,19 @@ class Authenticator:
 
         auth_request_response = response
 
-        sso_token = await self._authenticate_in_browser(
-            auth_request_response, display_mode
-        )
+        sso_token = await self._authenticate_in_browser(auth_request_response, display_mode)
 
         response = self._complete_authentication(auth_request_response, sso_token)
         if not isinstance(response, AuthCompleteResponse):
+            extra = {}
+            if isinstance(response, UnexpectedResponse):
+                extra["response_type"] = response.response_type
+                extra["raw_preview"] = response.raw_content[:500].decode("utf-8", errors="replace")
             logger.error(
-                "Could not finish authentication. Invalid response type in current state",
+                "Could not finish authentication. Invalid response type in current state. "
+                "If this happens after 2FA, your server may use an unsupported auth flow (#121)",
                 response=response,
+                **extra,
             )
             raise AuthenticationError(response)
 
@@ -61,7 +87,7 @@ class Authenticator:
     def _detect_authentication_target_url(self):
         # Follow possible redirects in a GET request
         # Authentication will occur using a POST request on the final URL
-        response = requests.get(self.host.vpn_url)
+        response = self.session.get(self.host.vpn_url, timeout=self.timeout)
         response.raise_for_status()
         self.host.address = response.url
         logger.debug("Auth target url", url=self.host.vpn_url)
@@ -69,13 +95,18 @@ class Authenticator:
     def _start_authentication(self, no_cert=False):
         request = _create_auth_init_request(self.host, self.host.vpn_url, self.version, no_cert)
         logger.debug("Sending auth init request", content=request)
-        response = self.session.post(self.host.vpn_url, request)
+        response = self.session.post(self.host.vpn_url, request, timeout=self.timeout)
         logger.debug("Auth init response received", content=response.content)
         return parse_response(response)
 
     async def _authenticate_in_browser(self, auth_request_response, display_mode):
         return await authenticate_in_browser(
-            self.proxy, auth_request_response, self.credentials, display_mode
+            self.proxy,
+            auth_request_response,
+            self.credentials,
+            display_mode,
+            window_width=self.window_width,
+            window_height=self.window_height,
         )
 
     def _complete_authentication(self, auth_request_response, sso_token):
@@ -83,7 +114,7 @@ class Authenticator:
             self.host, auth_request_response, sso_token, self.version
         )
         logger.debug("Sending auth finish request", content=request)
-        response = self.session.post(self.host.vpn_url, request)
+        response = self.session.post(self.host.vpn_url, request, timeout=self.timeout)
         logger.debug("Auth finish response received", content=response.content)
         return parse_response(response)
 
@@ -96,7 +127,26 @@ class AuthResponseError(AuthenticationError):
     pass
 
 
-def create_http_session(proxy, version):
+class SSLLegacyAdapter(requests.adapters.HTTPAdapter):
+    """HTTP adapter that enables legacy SSL renegotiation (#81).
+
+    Some older VPN appliances require unsafe legacy renegotiation.
+    This adapter creates an SSL context with ``OP_LEGACY_SERVER_CONNECT``
+    so that ``requests`` can talk to those servers.
+    """
+
+    def init_poolmanager(self, *args, **kwargs):
+        ctx = ssl.create_default_context()
+        try:
+            ctx.options |= ssl.OP_LEGACY_SERVER_CONNECT  # type: ignore[attr-defined]
+        except AttributeError:
+            # OP_LEGACY_SERVER_CONNECT not available on older Python/OpenSSL
+            logger.warning("ssl.OP_LEGACY_SERVER_CONNECT not available, skipping")
+        kwargs["ssl_context"] = ctx
+        return super().init_poolmanager(*args, **kwargs)
+
+
+def create_http_session(proxy, version, ssl_legacy=False):
     session = requests.Session()
     session.proxies = {"http": proxy, "https": proxy}
     session.headers.update(
@@ -108,9 +158,13 @@ def create_http_session(proxy, version):
             "X-Aggregate-Auth": "1",
             "X-Support-HTTP-Auth": "true",
             "Content-Type": "application/x-www-form-urlencoded",
-            # I know, it is invalid but that’s what Anyconnect sends
+            # I know, it is invalid but that's what Anyconnect sends
         }
     )
+    if ssl_legacy:
+        logger.info("Enabling SSL legacy renegotiation support")
+        adapter = SSLLegacyAdapter()
+        session.mount("https://", adapter)
     return session
 
 
@@ -138,9 +192,7 @@ def _create_auth_init_request(host, url, version, no_cert=False):
     if no_cert:
         root.append(ClientCertFail())
 
-    return etree.tostring(
-        root, pretty_print=True, xml_declaration=True, encoding="UTF-8"
-    )
+    return etree.tostring(root, pretty_print=True, xml_declaration=True, encoding="UTF-8")
 
 
 def parse_response(resp):
@@ -156,6 +208,15 @@ def parse_response(resp):
         return parse_auth_request_response(xml)
     elif t == "complete":
         return parse_auth_complete_response(xml)
+    else:
+        # #121: Better error for unexpected response types after 2FA
+        raw_preview = resp.content[:500].decode("utf-8", errors="replace")
+        logger.error(
+            "Unexpected response type from VPN server",
+            response_type=t,
+            raw_preview=raw_preview,
+        )
+        return UnexpectedResponse(response_type=t, raw_content=resp.content)
 
 
 def parse_auth_request_response(xml):
@@ -208,7 +269,16 @@ class AuthRequestResponse:
 @attr.s
 class CertRequestResponse:
     """Returned when server requests a client certificate."""
+
     pass
+
+
+@attr.s
+class UnexpectedResponse:
+    """Returned when the server sends an unrecognised response type (#121)."""
+
+    response_type = attr.ib(default=None)
+    raw_content = attr.ib(default=b"", repr=False)
 
 
 def parse_auth_complete_response(xml):
@@ -259,6 +329,4 @@ def _create_auth_finish_request(host, auth_info, sso_token, version):
         auth_info.opaque,
         Auth(SsoToken(sso_token)),
     )
-    return etree.tostring(
-        root, pretty_print=True, xml_declaration=True, encoding="UTF-8"
-    )
+    return etree.tostring(root, pretty_print=True, xml_declaration=True, encoding="UTF-8")

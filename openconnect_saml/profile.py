@@ -16,9 +16,7 @@ def _get_profiles_from_one_file(path):
     with path.open() as f:
         xml = objectify.parse(f)
 
-    hostentries = xml.xpath(
-        "//enc:AnyConnectProfile/enc:ServerList/enc:HostEntry", namespaces=ns
-    )
+    hostentries = xml.xpath("//enc:AnyConnectProfile/enc:ServerList/enc:HostEntry", namespaces=ns)
 
     profiles = []
     for entry in hostentries:

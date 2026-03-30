@@ -1,3 +1,4 @@
+import binascii
 import enum
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
@@ -42,9 +43,7 @@ def save(config):
         with config_path.open("w") as config_file:
             toml.dump(config.as_dict(), config_file)
     except Exception:
-        logger.error(
-            "Could not save configuration file", path=config_path, exc_info=True
-        )
+        logger.error("Could not save configuration file", path=config_path, exc_info=True)
 
 
 @attr.s
@@ -92,21 +91,13 @@ def get_default_auto_fill_rules():
             AutoFillRule(
                 selector="input[data-report-event=Signin_Submit]", action="click"
             ).as_dict(),
-            AutoFillRule(
-                selector="div[data-value=PhoneAppOTP]", action="click"
-            ).as_dict(),
+            AutoFillRule(selector="div[data-value=PhoneAppOTP]", action="click").as_dict(),
             AutoFillRule(selector="a[id=signInAnotherWay]", action="click").as_dict(),
-            AutoFillRule(
-                selector="input[id=idTxtBx_SAOTCC_OTC]", fill="totp"
-            ).as_dict(),
+            AutoFillRule(selector="input[id=idTxtBx_SAOTCC_OTC]", fill="totp").as_dict(),
             # Microsoft Authenticator number matching (#203)
-            AutoFillRule(
-                selector="div[data-value=PhoneAppNotification]", action="click"
-            ).as_dict(),
+            AutoFillRule(selector="div[data-value=PhoneAppNotification]", action="click").as_dict(),
             # Office365 "Stay signed in?" auto-dismiss (#196)
-            AutoFillRule(
-                selector="input[id=KmsiCheckboxField]", action="click"
-            ).as_dict(),
+            AutoFillRule(selector="input[id=KmsiCheckboxField]", action="click").as_dict(),
             AutoFillRule(selector="input[id=idSIButton9]", action="click").as_dict(),
         ]
     }
@@ -145,6 +136,14 @@ class Credentials(ConfigNode):
         if self._totp_secret:
             try:
                 return pyotp.TOTP(self._totp_secret).now()
+            except (binascii.Error, ValueError) as exc:
+                logger.warning(
+                    "Corrupt TOTP secret in memory (#143), ignoring. "
+                    "You will be prompted to re-enter it.",
+                    error=str(exc),
+                )
+                self._totp_secret = None
+                return None
             except Exception:
                 logger.warning("Invalid TOTP secret in memory, ignoring")
                 return None
@@ -154,6 +153,13 @@ class Credentials(ConfigNode):
             if totpsecret:
                 try:
                     return pyotp.TOTP(totpsecret).now()
+                except (binascii.Error, ValueError) as exc:
+                    logger.warning(
+                        "Corrupt TOTP secret in keyring (#143), ignoring. "
+                        "Use --reset-credentials to clear it or re-enter when prompted.",
+                        error=str(exc),
+                    )
+                    return None
                 except Exception:
                     logger.warning(
                         "Invalid TOTP secret in keyring, ignoring. "
@@ -201,6 +207,10 @@ class Config(ConfigNode):
         },
     )
     on_disconnect = attr.ib(converter=str, default="")
+    on_connect = attr.ib(converter=str, default="")
+    timeout = attr.ib(converter=int, default=30)
+    window_width = attr.ib(converter=int, default=800)
+    window_height = attr.ib(converter=int, default=600)
 
 
 class DisplayMode(enum.Enum):

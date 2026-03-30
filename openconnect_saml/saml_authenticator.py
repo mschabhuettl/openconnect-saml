@@ -5,8 +5,12 @@ from openconnect_saml.browser import Browser
 log = structlog.get_logger()
 
 
-async def authenticate_in_browser(proxy, auth_info, credentials, display_mode):
-    async with Browser(proxy, display_mode) as browser:
+async def authenticate_in_browser(
+    proxy, auth_info, credentials, display_mode, window_width=800, window_height=600
+):
+    async with Browser(
+        proxy, display_mode, window_width=window_width, window_height=window_height
+    ) as browser:
         await browser.authenticate_at(auth_info.login_url, credentials)
 
         while browser.url != auth_info.login_final_url:
