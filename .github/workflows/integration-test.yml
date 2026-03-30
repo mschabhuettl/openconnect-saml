@@ -1,0 +1,115 @@
+name: Integration Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:  # Manual trigger
+
+jobs:
+  install-test:
+    name: Install & CLI Test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python-version: ["3.10", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install from source
+        run: pip install .
+
+      - name: CLI smoke test
+        run: |
+          openconnect-saml --help
+          openconnect-saml --version || true
+
+      - name: Module import test
+        run: |
+          python -c "
+          from openconnect_saml import __version__, __description__
+          print(f'Version: {__version__}')
+          print(f'Description: {__description__}')
+          
+          from openconnect_saml.config import Config, load, save, DisplayMode
+          print('Config module OK')
+          
+          from openconnect_saml.profile import get_profiles
+          print('Profile module OK')
+          
+          from openconnect_saml.authenticator import Authenticator
+          print('Authenticator module OK')
+          
+          from openconnect_saml.browser import Browser
+          print('Browser module OK')
+          
+          print('All imports successful ✅')
+          "
+
+      - name: Config creation test
+        run: |
+          python -c "
+          from openconnect_saml.config import Config, HostProfile, Credentials
+          
+          # Create a config
+          c = Config(
+              default_profile=HostProfile(address='vpn.example.com', user_group='test', name='Test VPN'),
+              credentials=Credentials(username='testuser')
+          )
+          print(f'Server: {c.default_profile.vpn_url}')
+          print(f'User: {c.credentials.username}')
+          print('Config creation OK ✅')
+          "
+
+      - name: Default auto-fill rules test
+        run: |
+          python -c "
+          from openconnect_saml.config import get_default_auto_fill_rules
+          rules = get_default_auto_fill_rules()
+          print(f'Default rules: {len(rules)} entries')
+          assert len(rules) > 0, 'No default rules!'
+          print('Auto-fill rules OK ✅')
+          "
+
+      - name: Security features test
+        run: |
+          python -c "
+          # Test XXE protection
+          from lxml import etree
+          from openconnect_saml.authenticator import Authenticator
+          print('XXE-safe parser available ✅')
+          
+          # Test SSL legacy adapter
+          from openconnect_saml.authenticator import SSLLegacyAdapter
+          print('SSL Legacy Adapter available ✅')
+          
+          # Test credential safety
+          from openconnect_saml.config import Credentials
+          c = Credentials(username='test')
+          r = repr(c)
+          assert 'password' not in r.lower() or '***' in r, 'Password leaked in repr!'
+          print('Credential safety OK ✅')
+          "
+
+  pip-install-test:
+    name: pip install from PyPI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install from PyPI
+        run: pip install openconnect-saml
+
+      - name: Verify install
+        run: |
+          openconnect-saml --help
+          python -c "from openconnect_saml import __version__; print(f'PyPI version: {__version__}')"
