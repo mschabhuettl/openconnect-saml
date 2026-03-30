@@ -73,3 +73,15 @@ known-first-party = ["openconnect_saml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.bandit]
+exclude_dirs = ["tests"]
+skips = ["B101"]  # assert used in tests is fine
+
+[tool.coverage.run]
+source = ["openconnect_saml"]
+omit = ["openconnect_saml/browser/webengine_process.py"]  # Qt GUI needs display
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 50
