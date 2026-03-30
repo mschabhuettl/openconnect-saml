@@ -1,0 +1,72 @@
+name: AUR Publish
+
+on:
+  repository_dispatch:
+    types: [aur-publish]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish (without v prefix)"
+        required: false
+
+jobs:
+  aur-publish:
+    name: Update AUR package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')
+          fi
+          if [ -z "$VERSION" ]; then
+            echo "::error::Could not determine version"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Using version: $VERSION"
+
+      - name: Download source tarball and compute sha256
+        id: sha256
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          URL="https://github.com/mschabhuettl/openconnect-saml/archive/v${VERSION}.tar.gz"
+          curl -sL "$URL" -o source.tar.gz
+          SHA=$(sha256sum source.tar.gz | cut -d' ' -f1)
+          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
+          echo "SHA256: $SHA"
+
+      - name: Update PKGBUILD
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          SHA="${{ steps.sha256.outputs.sha256 }}"
+          cd aur
+          sed -i "s/^pkgver=.*/pkgver=${VERSION}/" PKGBUILD
+          sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
+          sed -i "s/^sha256sums=.*/sha256sums=('${SHA}')/" PKGBUILD
+
+      - name: Generate .SRCINFO
+        uses: hapakaien/archlinux-package-action@v2
+        with:
+          path: aur
+          flags: ""
+          namcap: false
+          srcinfo: true
+
+      - name: Publish to AUR
+        uses: KSXGitHub/github-actions-deploy-aur@v3.0.1
+        with:
+          pkgname: openconnect-saml
+          pkgbuild: aur/PKGBUILD
+          commit_username: "Matthias Schabhüttl"
+          commit_email: "aur@mschabhuettl.dev"
+          ssh_private_key: ${{ secrets.AUR_SSH_KEY }}
+          commit_message: "Update to ${{ steps.version.outputs.version }}"
+          force_push: true

@@ -1,0 +1,40 @@
+name: Security Audit
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * 1"  # Weekly on Monday at 06:00 UTC
+
+jobs:
+  pip-audit:
+    name: Dependency CVE scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install system deps
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1
+      - name: Install package
+        run: pip install -e ".[dev]"
+      - name: Install pip-audit
+        run: pip install pip-audit
+      - name: Run pip-audit
+        run: pip-audit --strict --desc
+
+  bandit:
+    name: Python security linter
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install bandit
+        run: pip install bandit[toml]
+      - name: Run bandit
+        run: bandit -r openconnect_saml/ -c pyproject.toml || bandit -r openconnect_saml/ -ll
