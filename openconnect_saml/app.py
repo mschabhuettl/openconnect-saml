@@ -3,23 +3,22 @@ import getpass
 import json
 import logging
 import os
+import shlex
+import shutil
 import signal
 import subprocess
 from pathlib import Path
 
-import shlex
-import shutil
 import structlog
 from prompt_toolkit import HTML
 from prompt_toolkit.shortcuts import radiolist_dialog
+from requests.exceptions import HTTPError
 
 from openconnect_saml import config
 from openconnect_saml.authenticator import Authenticator, AuthResponseError
 from openconnect_saml.browser import Terminated
 from openconnect_saml.config import Credentials
 from openconnect_saml.profile import get_profiles
-
-from requests.exceptions import HTTPError
 
 logger = structlog.get_logger()
 
@@ -30,12 +29,7 @@ def run(args):
     cfg = config.load()
 
     try:
-        if os.name == "nt":
-            auth_response, selected_profile = asyncio.run(
-                _run(args, cfg), loop_factory=asyncio.ProactorEventLoop
-            )
-        else:
-            auth_response, selected_profile = asyncio.run(_run(args, cfg))
+        auth_response, selected_profile = asyncio.run(_run(args, cfg))
     except KeyboardInterrupt:
         logger.warn("CTRL-C pressed, exiting")
         return 130
@@ -79,6 +73,8 @@ def run(args):
             args.proxy,
             args.ac_version,
             args.openconnect_args,
+            no_sudo=getattr(args, "no_sudo", False),
+            csd_wrapper=getattr(args, "csd_wrapper", None),
         )
     except KeyboardInterrupt:
         logger.warn("CTRL-C pressed, exiting")
@@ -109,6 +105,17 @@ def configure_logger(logger, level):
 
 
 async def _run(args, cfg):
+    # Handle --reset-credentials
+    if getattr(args, "reset_credentials", False):
+        if args.user:
+            logger.info("Resetting stored credentials", user=args.user)
+            cred = Credentials(args.user)
+            del cred.password
+            del cred.totp
+        else:
+            logger.error("--reset-credentials requires --user")
+        raise ValueError("Credentials reset complete", 0)
+
     credentials = None
     if cfg.credentials:
         credentials = cfg.credentials
@@ -187,15 +194,16 @@ def authenticate_to(host, proxy, credentials, display_mode, version):
     return Authenticator(host, proxy, credentials, version).authenticate(display_mode)
 
 
-def run_openconnect(auth_info, host, proxy, version, args):
+def run_openconnect(auth_info, host, proxy, version, args, no_sudo=False, csd_wrapper=None):
+    superuser_cmd = None
+
     if os.name == "nt":
         import ctypes
 
         if not ctypes.windll.shell32.IsUserAnAdmin():
             logger.error("OpenConnect must be run as Administrator on Windows, exiting")
             return 20
-        superuser_cmd = None
-    else:
+    elif not no_sudo:
         superuser_cmd = next(
             (prog for prog in ("doas", "sudo") if shutil.which(prog)), None
         )
@@ -224,12 +232,15 @@ def run_openconnect(auth_info, host, proxy, version, args):
     ]
     if proxy:
         openconnect_args.extend(["--proxy", proxy])
+    if csd_wrapper:
+        openconnect_args.extend(["--csd-wrapper", csd_wrapper])
 
     if os.name == "nt":
         command_line = ["powershell.exe", "-Command", shlex.join(openconnect_args)]
-    else:
-        # Prepend privilege escalation tool to run openconnect with elevated rights.
+    elif superuser_cmd:
         command_line = [superuser_cmd, *openconnect_args]
+    else:
+        command_line = openconnect_args
 
     session_token = auth_info.session_token.encode("utf-8")
     logger.debug("Starting OpenConnect", command_line=command_line)

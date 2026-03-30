@@ -12,6 +12,13 @@ Modernized fork based on [vlaci/openconnect-sso](https://github.com/vlaci/openco
 - TOTP secret configurable directly in config file
 - Profile auto-detection from AnyConnect XML profiles
 - Proxy support (SOCKS/HTTP)
+- Client certificate handling (auto-fallback on cert-request)
+- `--no-sudo` mode for use with `--script-tun`
+- `--csd-wrapper` passthrough for CSD/hostscan support
+- `--reset-credentials` to clear saved keyring entries
+- Microsoft Authenticator number matching support
+- Office365 "Stay signed in?" auto-dismiss
+- Robust XML parsing (recovers from malformed responses)
 
 ## Requirements
 
@@ -43,6 +50,15 @@ openconnect-saml --profile /opt/cisco/anyconnect/profile
 
 # Authentication only (output cookie)
 openconnect-saml --server vpn.example.com --authenticate
+
+# Without sudo (for --script-tun)
+openconnect-saml --server vpn.example.com --no-sudo -- --script-tun
+
+# With CSD hostscan wrapper
+openconnect-saml --server vpn.example.com --csd-wrapper /path/to/csd-wrapper.sh
+
+# Reset saved credentials
+openconnect-saml --user user@example.com --reset-credentials
 ```
 
 ## Configuration
@@ -75,16 +91,31 @@ Custom auto-fill rules can be defined per URL pattern:
 ]
 ```
 
-### TOTP / Password
+#### Office365 "Stay signed in?" page
 
-Credentials are stored in the system keyring. On first use, you'll be prompted for your password and optional TOTP secret. You can also set them directly:
+The default rules now auto-dismiss the "Stay signed in?" prompt. If you use custom `auto_fill_rules`, add these entries:
 
-```bash
-# Password is prompted interactively and saved to keyring
-# TOTP secret can be configured in the keyring as well
+```toml
+[[auto_fill_rules."https://*"]]
+selector = "input[id=KmsiCheckboxField]"
+action = "click"
+
+[[auto_fill_rules."https://*"]]
+selector = "input[id=idSIButton9]"
+action = "click"
 ```
 
+### TOTP / Password
+
+Credentials are stored in the system keyring. On first use, you'll be prompted for your password and optional TOTP secret.
+
 If keyring is unavailable (e.g., headless server), passwords are kept in memory for the session.
+
+To clear stored credentials:
+
+```bash
+openconnect-saml --user user@example.com --reset-credentials
+```
 
 ## Credits
 

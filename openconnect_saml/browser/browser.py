@@ -2,8 +2,8 @@ import asyncio
 
 import structlog
 
-from . import webengine_process as web
 from ..config import DisplayMode
+from . import webengine_process as web
 
 logger = structlog.get_logger()
 

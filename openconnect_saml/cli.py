@@ -7,7 +7,7 @@ import os
 import sys
 
 import openconnect_saml
-from openconnect_saml import app, config, __version__
+from openconnect_saml import __version__, app, config
 
 
 def create_argparser():
@@ -114,6 +114,28 @@ def create_argparser():
     credentials_group = parser.add_argument_group("Credentials for automatic login")
     credentials_group.add_argument(
         "-u", "--user", help="Authenticate as the given user", default=None
+    )
+    credentials_group.add_argument(
+        "--reset-credentials",
+        dest="reset_credentials",
+        help="Delete saved credentials from keyring and exit",
+        action="store_true",
+        default=False,
+    )
+
+    connection_group = parser.add_argument_group("Connection options")
+    connection_group.add_argument(
+        "--no-sudo",
+        dest="no_sudo",
+        help="Do not use sudo/doas to run openconnect (for use with --script-tun etc.)",
+        action="store_true",
+        default=False,
+    )
+    connection_group.add_argument(
+        "--csd-wrapper",
+        dest="csd_wrapper",
+        help="Path to CSD hostscan wrapper script, passed to openconnect --csd-wrapper",
+        default=None,
     )
     return parser
 

@@ -8,19 +8,41 @@ from urllib.parse import urlparse
 
 import attr
 import structlog
-
-from PyQt6.QtCore import QUrl, QTimer, pyqtSlot, Qt
+from PyQt6.QtCore import Qt, QTimer, QUrl, pyqtSlot
 from PyQt6.QtNetwork import QNetworkCookie, QNetworkProxy
-from PyQt6.QtWebEngineCore import QWebEngineScript, QWebEngineProfile, QWebEnginePage
+from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineScript
 from PyQt6.QtWebEngineWidgets import QWebEngineView
-from PyQt6.QtWidgets import QApplication, QWidget, QSizePolicy, QVBoxLayout
+from PyQt6.QtWidgets import QApplication, QSizePolicy, QVBoxLayout, QWidget
 
 from openconnect_saml import config
-
 
 app = None
 profile = None
 logger = structlog.get_logger("webengine")
+
+
+def configure_webengine_logger():
+    """Configure structlog for the webengine subprocess to use stderr (#208)."""
+    import logging as _logging
+
+    structlog.configure(
+        processors=[
+            structlog.stdlib.add_log_level,
+            structlog.stdlib.add_logger_name,
+            structlog.processors.format_exc_info,
+            structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
+        ],
+        logger_factory=structlog.stdlib.LoggerFactory(),
+    )
+    formatter = structlog.stdlib.ProcessorFormatter(
+        processor=structlog.dev.ConsoleRenderer()
+    )
+    handler = _logging.StreamHandler(sys.stderr)
+    handler.setFormatter(formatter)
+    root_logger = _logging.getLogger()
+    root_logger.handlers.clear()
+    root_logger.addHandler(handler)
+    root_logger.setLevel(_logging.DEBUG)
 
 
 @attr.s
@@ -70,6 +92,9 @@ class Process(multiprocessing.Process):
         # To work around funky GC conflicts with C++ code by ensuring QApplication terminates last
         global app
         global profile
+
+        # Redirect all logging to stderr to avoid polluting stdout (#208)
+        configure_webengine_logger()
 
         signal.signal(signal.SIGTERM, on_sigterm)
         signal.signal(signal.SIGINT, signal.SIG_DFL)
@@ -246,7 +271,7 @@ def get_selectors(rules, credentials):
             value = json.dumps(getattr(credentials, rule.fill, None))
             if value:
                 statements.append(
-                    f"""var elem = document.querySelector({selector}); if (elem) {{ elem.dispatchEvent(new Event("focus")); elem.value = {value}; elem.dispatchEvent(new Event("blur")); }}"""
+                    f"""var elem = document.querySelector({selector}); if (elem) {{ elem.dispatchEvent(new Event("focus")); elem.value = {value}; elem.dispatchEvent(new Event("change", {{bubbles: true}})); elem.dispatchEvent(new Event("input", {{bubbles: true}})); elem.dispatchEvent(new Event("blur")); }}"""
                 )
             else:
                 logger.warning(

@@ -99,6 +99,15 @@ def get_default_auto_fill_rules():
             AutoFillRule(
                 selector="input[id=idTxtBx_SAOTCC_OTC]", fill="totp"
             ).as_dict(),
+            # Microsoft Authenticator number matching (#203)
+            AutoFillRule(
+                selector="div[data-value=PhoneAppNotification]", action="click"
+            ).as_dict(),
+            # Office365 "Stay signed in?" auto-dismiss (#196)
+            AutoFillRule(
+                selector="input[id=KmsiCheckboxField]", action="click"
+            ).as_dict(),
+            AutoFillRule(selector="input[id=idSIButton9]", action="click").as_dict(),
         ]
     }
 
@@ -124,14 +133,34 @@ class Credentials(ConfigNode):
     def password(self, value):
         self._password = value
 
+    @password.deleter
+    def password(self):
+        try:
+            keyring.delete_password(APP_NAME, self.username)
+        except keyring.errors.KeyringError:
+            logger.info("Cannot delete saved password from keyring.")
+
     @property
     def totp(self):
         if self._totp_secret:
-            return pyotp.TOTP(self._totp_secret).now()
+            try:
+                return pyotp.TOTP(self._totp_secret).now()
+            except Exception:
+                logger.warning("Invalid TOTP secret in memory, ignoring")
+                return None
 
         try:
             totpsecret = keyring.get_password(APP_NAME, "totp/" + self.username)
-            return pyotp.TOTP(totpsecret).now() if totpsecret else None
+            if totpsecret:
+                try:
+                    return pyotp.TOTP(totpsecret).now()
+                except Exception:
+                    logger.warning(
+                        "Invalid TOTP secret in keyring, ignoring. "
+                        "Use --reset-credentials to clear it."
+                    )
+                    return None
+            return None
         except keyring.errors.KeyringError:
             logger.info("Cannot retrieve saved totp info from keyring.")
             return ""
@@ -139,6 +168,13 @@ class Credentials(ConfigNode):
     @totp.setter
     def totp(self, value):
         self._totp_secret = value
+
+    @totp.deleter
+    def totp(self):
+        try:
+            keyring.delete_password(APP_NAME, "totp/" + self.username)
+        except keyring.errors.KeyringError:
+            logger.info("Cannot delete saved totp secret from keyring.")
 
     def save(self):
         if self._password:
