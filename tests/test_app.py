@@ -1,3 +1,6 @@
+import os
+import pytest
+import platform
 import shlex
 import sys
 from unittest.mock import MagicMock, patch
@@ -41,6 +44,7 @@ def test_run_openconnect_windows(mock_run):
 
 @patch("subprocess.run")
 @patch("openconnect_saml.app.shutil.which", return_value="/usr/bin/sudo")
+@pytest.mark.skipif(platform.system() == "Windows", reason="Linux-specific test")
 def test_run_openconnect_linux_with_sudo(mock_which, mock_run):
     """Test normal Linux execution with sudo."""
     auth_info = MagicMock()
@@ -57,6 +61,7 @@ def test_run_openconnect_linux_with_sudo(mock_which, mock_run):
 
 
 @patch("subprocess.run")
+@pytest.mark.skipif(platform.system() == "Windows", reason="Linux-specific test")
 def test_run_openconnect_linux_no_sudo(mock_run):
     """Test --no-sudo flag skips privilege escalation."""
     auth_info = MagicMock()
@@ -71,6 +76,7 @@ def test_run_openconnect_linux_no_sudo(mock_run):
 
 
 @patch("subprocess.run")
+@pytest.mark.skipif(platform.system() == "Windows", reason="Linux-specific test")
 def test_run_openconnect_with_csd_wrapper(mock_run):
     """Test --csd-wrapper passthrough."""
     auth_info = MagicMock()

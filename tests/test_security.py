@@ -1,4 +1,5 @@
 """Security audit tests — XXE, credential leaks, input validation, permissions."""
+import platform
 
 import stat
 from unittest.mock import MagicMock, patch
@@ -101,6 +102,7 @@ class TestConfigPermissions:
     """Verify config files are saved with restrictive permissions."""
 
     @patch("openconnect_saml.config.xdg.BaseDirectory.save_config_path")
+    @pytest.mark.skipif(platform.system() == "Windows", reason="Unix permissions only")
     def test_config_saved_with_restricted_permissions(self, mock_save_path, tmp_path):
         mock_save_path.return_value = str(tmp_path)
         cfg = Config()
