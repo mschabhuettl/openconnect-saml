@@ -238,9 +238,7 @@ def parse_auth_request_response(xml):
         raise AuthResponseError("Response missing 'auth' element")
 
     if xml.auth.get("id") != "main":
-        raise AuthResponseError(
-            f"Expected auth id 'main', got '{xml.auth.get('id')}'"
-        )
+        raise AuthResponseError(f"Expected auth id 'main', got '{xml.auth.get('id')}'")
 
     try:
         resp = AuthRequestResponse(
@@ -296,9 +294,7 @@ def parse_auth_complete_response(xml):
     if not hasattr(xml, "auth"):
         raise AuthResponseError("Response missing 'auth' element")
     if xml.auth.get("id") != "success":
-        raise AuthResponseError(
-            f"Expected auth id 'success', got '{xml.auth.get('id')}'"
-        )
+        raise AuthResponseError(f"Expected auth id 'success', got '{xml.auth.get('id')}'")
 
     # #175: Some servers use banner instead of message
     if hasattr(xml.auth, "banner") and xml.auth.banner.text:

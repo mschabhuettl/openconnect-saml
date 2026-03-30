@@ -327,9 +327,7 @@ def handle_connect(command):
             return 1
         logger.info("Running on-connect command", command_line=command)
         try:
-            return subprocess.run(
-                shlex.split(command), timeout=30, shell=False
-            ).returncode
+            return subprocess.run(shlex.split(command), timeout=30, shell=False).returncode
         except subprocess.TimeoutExpired:
             logger.warning("On-connect command timed out after 30s", command_line=command)
             return 1
@@ -348,9 +346,7 @@ def handle_disconnect(command):
             return 1
         logger.info("Running command on disconnect", command_line=command)
         try:
-            return subprocess.run(
-                shlex.split(command), timeout=5, shell=False
-            ).returncode
+            return subprocess.run(shlex.split(command), timeout=5, shell=False).returncode
         except subprocess.TimeoutExpired:
             logger.warning("On-disconnect command timed out after 5s", command_line=command)
             return 1

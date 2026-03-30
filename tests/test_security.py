@@ -121,6 +121,7 @@ class TestAuthResponseErrors:
     def test_auth_request_wrong_id_raises(self):
         """auth-request with id != 'main' should raise AuthResponseError."""
         from lxml import objectify
+
         xml_str = b"""<?xml version="1.0" encoding="UTF-8"?>
 <config-auth type="auth-request">
   <auth id="wrong">
@@ -139,6 +140,7 @@ class TestAuthResponseErrors:
     def test_auth_complete_wrong_id_raises(self):
         """auth-complete with id != 'success' should raise AuthResponseError."""
         from lxml import objectify
+
         xml_str = b"""<?xml version="1.0" encoding="UTF-8"?>
 <config-auth type="complete">
   <auth id="failure">
@@ -154,6 +156,7 @@ class TestAuthResponseErrors:
     def test_auth_complete_missing_auth_raises(self):
         """auth-complete without 'auth' element should raise AuthResponseError."""
         from lxml import objectify
+
         xml_str = b"""<?xml version="1.0" encoding="UTF-8"?>
 <config-auth type="complete">
   <session-token>token</session-token>
@@ -171,6 +174,7 @@ class TestInputValidation:
 
     def test_validate_hook_rejects_semicolons(self):
         from openconnect_saml.app import _validate_hook_command
+
         assert _validate_hook_command("/usr/bin/script.sh") is True
         assert _validate_hook_command("echo hello; rm -rf /") is False
         assert _validate_hook_command("$(whoami)") is False
@@ -181,17 +185,20 @@ class TestInputValidation:
 
     def test_validate_hook_allows_simple_commands(self):
         from openconnect_saml.app import _validate_hook_command
+
         assert _validate_hook_command("") is True
         assert _validate_hook_command("/path/to/script") is True
         assert _validate_hook_command("/usr/local/bin/vpn-up.sh --flag value") is True
 
     def test_handle_connect_rejects_injection(self):
         from openconnect_saml.app import handle_connect
+
         result = handle_connect("echo hello; rm -rf /")
         assert result == 1
 
     def test_handle_disconnect_rejects_injection(self):
         from openconnect_saml.app import handle_disconnect
+
         result = handle_disconnect("$(whoami)")
         assert result == 1
 
@@ -205,6 +212,7 @@ class TestNoShellTrue:
     @patch("subprocess.run")
     def test_handle_connect_no_shell(self, mock_run):
         from openconnect_saml.app import handle_connect
+
         mock_run.return_value = MagicMock(returncode=0)
         handle_connect("/usr/bin/test-script")
         if mock_run.called:
@@ -214,6 +222,7 @@ class TestNoShellTrue:
     @patch("subprocess.run")
     def test_handle_disconnect_no_shell(self, mock_run):
         from openconnect_saml.app import handle_disconnect
+
         mock_run.return_value = MagicMock(returncode=0)
         handle_disconnect("/usr/bin/test-script")
         if mock_run.called:
