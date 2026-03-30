@@ -195,14 +195,22 @@ def _create_auth_init_request(host, url, version, no_cert=False):
     return etree.tostring(root, pretty_print=True, xml_declaration=True, encoding="UTF-8")
 
 
+def _make_safe_parser(recover=False):
+    """Create an XML parser with XXE protections."""
+    return objectify.makeparser(
+        resolve_entities=False,
+        no_network=True,
+        recover=recover,
+    )
+
+
 def parse_response(resp):
     resp.raise_for_status()
     try:
-        xml = objectify.fromstring(resp.content)
+        xml = objectify.fromstring(resp.content, parser=_make_safe_parser())
     except etree.XMLSyntaxError:
         # Fallback: use recovery parser for malformed XML (e.g. <br> tags) (#171)
-        parser = objectify.makeparser(recover=True)
-        xml = objectify.fromstring(resp.content, parser=parser)
+        xml = objectify.fromstring(resp.content, parser=_make_safe_parser(recover=True))
     t = xml.get("type")
     if t == "auth-request":
         return parse_auth_request_response(xml)
@@ -229,7 +237,10 @@ def parse_auth_request_response(xml):
     if not hasattr(xml, "auth"):
         raise AuthResponseError("Response missing 'auth' element")
 
-    assert xml.auth.get("id") == "main"
+    if xml.auth.get("id") != "main":
+        raise AuthResponseError(
+            f"Expected auth id 'main', got '{xml.auth.get('id')}'"
+        )
 
     try:
         resp = AuthRequestResponse(
@@ -282,8 +293,12 @@ class UnexpectedResponse:
 
 
 def parse_auth_complete_response(xml):
-    assert hasattr(xml, "auth"), "Response missing 'auth' element"
-    assert xml.auth.get("id") == "success"
+    if not hasattr(xml, "auth"):
+        raise AuthResponseError("Response missing 'auth' element")
+    if xml.auth.get("id") != "success":
+        raise AuthResponseError(
+            f"Expected auth id 'success', got '{xml.auth.get('id')}'"
+        )
 
     # #175: Some servers use banner instead of message
     if hasattr(xml.auth, "banner") and xml.auth.banner.text:
