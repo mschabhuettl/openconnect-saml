@@ -192,7 +192,7 @@ class WebBrowser(QWebEngineView):
         self.page().scripts().insert(script)
 
         if credentials:
-            logger.info("Initiating autologin", cred=credentials)
+            logger.info("Initiating autologin", user=getattr(credentials, "username", "<unknown>"))
             for url_pattern, rules in self._auto_fill_rules.items():
                 script = QWebEngineScript()
                 script.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentReady)

@@ -296,17 +296,64 @@ def run_openconnect(
         return subprocess.run(command_line, input=session_token).returncode
 
 
+def _validate_hook_command(command):
+    """Basic validation for on-connect/on-disconnect hook commands.
+
+    Rejects commands containing shell metacharacters that could indicate
+    injection attempts. Users who need complex commands should use a script file.
+    """
+    if not command:
+        return True
+    # Allow paths to scripts and simple commands; warn on suspicious patterns
+    suspicious = ["`", "$(", "${", "||", "&&", ";", "\n", "|"]
+    for pattern in suspicious:
+        if pattern in command:
+            logger.warning(
+                "Hook command contains suspicious shell metacharacter",
+                command=command,
+                pattern=pattern,
+            )
+            return False
+    return True
+
+
 def handle_connect(command):
     if command:
+        if not _validate_hook_command(command):
+            logger.error(
+                "Refusing to run on-connect command with suspicious content",
+                command_line=command,
+            )
+            return 1
         logger.info("Running on-connect command", command_line=command)
         try:
-            return subprocess.run(command, timeout=30, shell=True).returncode
+            return subprocess.run(
+                shlex.split(command), timeout=30, shell=False
+            ).returncode
         except subprocess.TimeoutExpired:
             logger.warning("On-connect command timed out after 30s", command_line=command)
+            return 1
+        except (FileNotFoundError, OSError) as exc:
+            logger.error("On-connect command failed", command_line=command, error=str(exc))
             return 1
 
 
 def handle_disconnect(command):
     if command:
+        if not _validate_hook_command(command):
+            logger.error(
+                "Refusing to run on-disconnect command with suspicious content",
+                command_line=command,
+            )
+            return 1
         logger.info("Running command on disconnect", command_line=command)
-        return subprocess.run(command, timeout=5, shell=True).returncode
+        try:
+            return subprocess.run(
+                shlex.split(command), timeout=5, shell=False
+            ).returncode
+        except subprocess.TimeoutExpired:
+            logger.warning("On-disconnect command timed out after 5s", command_line=command)
+            return 1
+        except (FileNotFoundError, OSError) as exc:
+            logger.error("On-disconnect command failed", command_line=command, error=str(exc))
+            return 1

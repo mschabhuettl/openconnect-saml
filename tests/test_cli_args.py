@@ -1,0 +1,142 @@
+"""Tests for CLI argument parsing — all flags including new ones."""
+
+import pytest
+
+from openconnect_saml.cli import create_argparser
+
+
+@pytest.fixture
+def parser():
+    return create_argparser()
+
+
+class TestBasicArgs:
+    def test_server_arg(self, parser):
+        args = parser.parse_args(["--server", "vpn.example.com"])
+        assert args.server == "vpn.example.com"
+
+    def test_server_short(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com"])
+        assert args.server == "vpn.example.com"
+
+    def test_user_arg(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com", "--user", "testuser"])
+        assert args.user == "testuser"
+
+    def test_user_short(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com", "-u", "testuser"])
+        assert args.user == "testuser"
+
+    def test_proxy_arg(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com", "--proxy", "http://proxy:8080"])
+        assert args.proxy == "http://proxy:8080"
+
+
+class TestNewFlags:
+    def test_no_sudo(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com", "--no-sudo"])
+        assert args.no_sudo is True
+
+    def test_no_sudo_default(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com"])
+        assert args.no_sudo is False
+
+    def test_csd_wrapper(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com", "--csd-wrapper", "/path/to/csd.sh"])
+        assert args.csd_wrapper == "/path/to/csd.sh"
+
+    def test_csd_wrapper_default(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com"])
+        assert args.csd_wrapper is None
+
+    def test_ssl_legacy(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com", "--ssl-legacy"])
+        assert args.ssl_legacy is True
+
+    def test_ssl_legacy_default(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com"])
+        assert args.ssl_legacy is False
+
+    def test_timeout(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com", "--timeout", "60"])
+        assert args.timeout == 60
+
+    def test_timeout_default(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com"])
+        assert args.timeout is None
+
+    def test_window_size(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com", "--window-size", "1024x768"])
+        assert args.window_size == "1024x768"
+
+    def test_window_size_default(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com"])
+        assert args.window_size is None
+
+    def test_on_connect(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com", "--on-connect", "/usr/bin/script.sh"])
+        assert args.on_connect == "/usr/bin/script.sh"
+
+    def test_on_disconnect(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com", "--on-disconnect", "/usr/bin/down.sh"])
+        assert args.on_disconnect == "/usr/bin/down.sh"
+
+    def test_reset_credentials(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com", "--reset-credentials"])
+        assert args.reset_credentials is True
+
+
+class TestAuthenticateFlag:
+    def test_authenticate_json(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com", "--authenticate", "json"])
+        assert args.authenticate == "json"
+
+    def test_authenticate_shell(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com", "--authenticate", "shell"])
+        assert args.authenticate == "shell"
+
+    def test_authenticate_default_is_shell(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com", "--authenticate"])
+        assert args.authenticate == "shell"
+
+    def test_no_authenticate(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com"])
+        assert args.authenticate is False
+
+
+class TestBrowserDisplayMode:
+    def test_shown(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com", "--browser-display-mode", "shown"])
+        assert args.browser_display_mode == "shown"
+
+    def test_hidden(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com", "--browser-display-mode", "hidden"])
+        assert args.browser_display_mode == "hidden"
+
+    def test_default_shown(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com"])
+        assert args.browser_display_mode == "shown"
+
+
+class TestLogLevel:
+    def test_debug(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com", "-l", "DEBUG"])
+        assert args.log_level == 10
+
+    def test_error(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com", "-l", "ERROR"])
+        assert args.log_level == 40
+
+    def test_default_info(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com"])
+        assert args.log_level == 20
+
+
+class TestOpenConnectArgs:
+    def test_passthrough_args(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com", "--", "--protocol", "anyconnect"])
+        assert args.openconnect_args == ["--protocol", "anyconnect"]
+
+    def test_no_passthrough(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com"])
+        assert args.openconnect_args == []

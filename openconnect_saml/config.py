@@ -39,7 +39,8 @@ def save(config):
     path = xdg.BaseDirectory.save_config_path(APP_NAME)
     config_path = Path(path) / "config.toml"
     try:
-        config_path.touch()
+        config_path.touch(mode=0o600)
+        config_path.chmod(0o600)  # Ensure permissions even if file existed
         with config_path.open("w") as config_file:
             toml.dump(config.as_dict(), config_file)
     except Exception:
@@ -208,9 +209,9 @@ class Config(ConfigNode):
     )
     on_disconnect = attr.ib(converter=str, default="")
     on_connect = attr.ib(converter=str, default="")
-    timeout = attr.ib(converter=int, default=30)
-    window_width = attr.ib(converter=int, default=800)
-    window_height = attr.ib(converter=int, default=600)
+    timeout = attr.ib(converter=lambda v: int(v) if v is not None else 30, default=30)
+    window_width = attr.ib(converter=lambda v: int(v) if v is not None else 800, default=800)
+    window_height = attr.ib(converter=lambda v: int(v) if v is not None else 600, default=600)
 
 
 class DisplayMode(enum.Enum):
