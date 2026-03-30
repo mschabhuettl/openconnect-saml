@@ -3,7 +3,8 @@ import sys
 import attr
 import pytest
 
-from openconnect_saml.browser import Browser, DisplayMode
+from openconnect_saml.browser import Browser
+from openconnect_saml.config import DisplayMode
 
 
 @pytest.mark.asyncio
