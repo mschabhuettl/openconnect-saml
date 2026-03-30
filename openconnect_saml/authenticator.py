@@ -1,10 +1,11 @@
+import socket
+
 import attr
 import requests
 import structlog
 from lxml import etree, objectify
 
 from openconnect_saml.saml_authenticator import authenticate_in_browser
-
 
 logger = structlog.get_logger()
 
@@ -21,6 +22,11 @@ class Authenticator:
         self._detect_authentication_target_url()
 
         response = self._start_authentication()
+
+        # Handle client-cert-request by retrying without cert (#164)
+        if isinstance(response, CertRequestResponse):
+            response = self._start_authentication(no_cert=True)
+
         if not isinstance(response, AuthRequestResponse):
             logger.error(
                 "Could not start authentication. Invalid response type in current state",
@@ -60,8 +66,8 @@ class Authenticator:
         self.host.address = response.url
         logger.debug("Auth target url", url=self.host.vpn_url)
 
-    def _start_authentication(self):
-        request = _create_auth_init_request(self.host, self.host.vpn_url, self.version)
+    def _start_authentication(self, no_cert=False):
+        request = _create_auth_init_request(self.host, self.host.vpn_url, self.version, no_cert)
         logger.debug("Sending auth init request", content=request)
         response = self.session.post(self.host.vpn_url, request)
         logger.debug("Auth init response received", content=response.content)
@@ -111,7 +117,7 @@ def create_http_session(proxy, version):
 E = objectify.ElementMaker(annotate=False)
 
 
-def _create_auth_init_request(host, url, version):
+def _create_auth_init_request(host, url, version, no_cert=False):
     ConfigAuth = getattr(E, "config-auth")
     Version = E.version
     DeviceId = getattr(E, "device-id")
@@ -119,6 +125,7 @@ def _create_auth_init_request(host, url, version):
     GroupAccess = getattr(E, "group-access")
     Capabilities = E.capabilities
     AuthMethod = getattr(E, "auth-method")
+    ClientCertFail = getattr(E, "client-cert-fail")
 
     root = ConfigAuth(
         {"client": "vpn", "type": "init", "aggregate-auth-version": "2"},
@@ -128,6 +135,9 @@ def _create_auth_init_request(host, url, version):
         GroupAccess(url),
         Capabilities(AuthMethod("single-sign-on-v2")),
     )
+    if no_cert:
+        root.append(ClientCertFail())
+
     return etree.tostring(
         root, pretty_print=True, xml_declaration=True, encoding="UTF-8"
     )
@@ -135,7 +145,12 @@ def _create_auth_init_request(host, url, version):
 
 def parse_response(resp):
     resp.raise_for_status()
-    xml = objectify.fromstring(resp.content)
+    try:
+        xml = objectify.fromstring(resp.content)
+    except etree.XMLSyntaxError:
+        # Fallback: use recovery parser for malformed XML (e.g. <br> tags) (#171)
+        parser = objectify.makeparser(recover=True)
+        xml = objectify.fromstring(resp.content, parser=parser)
     t = xml.get("type")
     if t == "auth-request":
         return parse_auth_request_response(xml)
@@ -144,13 +159,22 @@ def parse_response(resp):
 
 
 def parse_auth_request_response(xml):
+    # Handle client-cert-request responses (#164)
+    if hasattr(xml, "client-cert-request"):
+        logger.info("client-cert-request received")
+        return CertRequestResponse()
+
+    # Defensive check: ensure auth element exists (#5)
+    if not hasattr(xml, "auth"):
+        raise AuthResponseError("Response missing 'auth' element")
+
     assert xml.auth.get("id") == "main"
 
     try:
         resp = AuthRequestResponse(
             auth_id=xml.auth.get("id"),
             auth_title=getattr(xml.auth, "title", ""),
-            auth_message=xml.auth.message,
+            auth_message=getattr(xml.auth, "message", ""),  # #161/#175: defensive getattr
             auth_error=getattr(xml.auth, "error", ""),
             opaque=xml.opaque,
             login_url=xml.auth["sso-v2-login"],
@@ -158,7 +182,7 @@ def parse_auth_request_response(xml):
             token_cookie_name=xml.auth["sso-v2-token-cookie-name"],
         )
     except AttributeError as exc:
-        raise AuthResponseError(exc)
+        raise AuthResponseError(exc) from exc
 
     logger.info(
         "Response received",
@@ -181,11 +205,25 @@ class AuthRequestResponse:
     opaque = attr.ib()
 
 
+@attr.s
+class CertRequestResponse:
+    """Returned when server requests a client certificate."""
+    pass
+
+
 def parse_auth_complete_response(xml):
+    assert hasattr(xml, "auth"), "Response missing 'auth' element"
     assert xml.auth.get("id") == "success"
+
+    # #175: Some servers use banner instead of message
+    if hasattr(xml.auth, "banner") and xml.auth.banner.text:
+        auth_message = xml.auth.banner.text
+    else:
+        auth_message = getattr(xml.auth, "message", "")
+
     resp = AuthCompleteResponse(
         auth_id=xml.auth.get("id"),
-        auth_message=xml.auth.message,
+        auth_message=auth_message,
         session_token=xml["session-token"],
         server_cert_hash=xml.config["vpn-base-config"]["server-cert-hash"],
     )
@@ -202,6 +240,8 @@ class AuthCompleteResponse:
 
 
 def _create_auth_finish_request(host, auth_info, sso_token, version):
+    hostname = socket.gethostname()
+
     ConfigAuth = getattr(E, "config-auth")
     Version = E.version
     DeviceId = getattr(E, "device-id")
@@ -213,7 +253,7 @@ def _create_auth_finish_request(host, auth_info, sso_token, version):
     root = ConfigAuth(
         {"client": "vpn", "type": "auth-reply", "aggregate-auth-version": "2"},
         Version({"who": "vpn"}, version),
-        DeviceId("linux-64"),
+        DeviceId({"computer-name": hostname}, "linux-64"),
         SessionToken(),
         SessionId(),
         auth_info.opaque,

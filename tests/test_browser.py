@@ -1,6 +1,7 @@
+import sys
+
 import attr
 import pytest
-import sys
 
 from openconnect_saml.browser import Browser, DisplayMode
 
