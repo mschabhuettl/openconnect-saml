@@ -5,6 +5,16 @@ All notable changes to this project will be documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
+## [0.1.1] - 2026-03-30
+
+### Improved
+- Complete CI/CD pipeline: security scanning (pip-audit, bandit), Windows tests, coverage reports
+- Automated release flow: tag → GitHub Release → PyPI → AUR
+- Code formatting standardized with ruff
+
+### Fixed
+- CI compatibility with PyQt6 system dependencies
+- Dev dependencies properly declared in pyproject.toml
 
 ## [0.1.0] - 2026-03-30
 
