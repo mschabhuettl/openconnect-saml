@@ -6,6 +6,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.3.0] - 2026-03-31
+
+### Added
+- **Chrome/Chromium browser** — Playwright-based alternative to Qt WebEngine (`--browser chrome`)
+- **Systemd service** — `openconnect-saml service install/start/stop/status/logs`
+- **Auto-reconnect** — automatic re-authentication on disconnect (`--reconnect`, `--max-retries`)
+- **FIDO2/Yubikey support** — USB security key authentication for 2FA
+- Backoff strategy: 30s → 60s → 120s → 300s between reconnect attempts
+- New optional deps: `[chrome]` for Playwright, `[fido2]` for security keys
+- 54 new tests (180 total)
+
 ## [0.2.0] - 2026-03-31
 
 ### Added
