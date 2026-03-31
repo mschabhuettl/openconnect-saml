@@ -58,23 +58,9 @@ jobs:
           files: dist/*
           generate_release_notes: true
 
-  publish-pypi:
-    name: Publish to PyPI
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: pypi
-      url: https://pypi.org/p/openconnect-saml
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
-      - uses: pypa/gh-action-pypi-publish@release/v1
-
   trigger-aur:
     name: Trigger AUR update
-    needs: publish-pypi
+    needs: github-release
     runs-on: ubuntu-latest
     steps:
       - name: Trigger AUR publish workflow
