@@ -7,8 +7,9 @@ try:
     from openconnect_saml.browser import Browser
 
     HAS_GUI = True
-except ImportError:
+except (ImportError, OSError):
     HAS_GUI = False
+    Browser = None  # type: ignore
 
 from openconnect_saml.config import DisplayMode
 
