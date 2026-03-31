@@ -11,9 +11,9 @@ except (ImportError, OSError):
     HAS_GUI = False
     Browser = None  # type: ignore
 
-from openconnect_saml.config import DisplayMode
-
 import os
+
+from openconnect_saml.config import DisplayMode
 
 pytestmark = pytest.mark.skipif(
     not HAS_GUI or os.environ.get("CI") == "true",
