@@ -35,7 +35,7 @@ dependencies = [
     "pyotp",
     "pysocks",
     "pyxdg",
-    "requests",
+    "requests>=2.33.0",
     "structlog",
     "toml",
 ]
