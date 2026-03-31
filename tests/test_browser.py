@@ -13,7 +13,12 @@ except (ImportError, OSError):
 
 from openconnect_saml.config import DisplayMode
 
-pytestmark = pytest.mark.skipif(not HAS_GUI, reason="PyQt6/GUI not available")
+import os
+
+pytestmark = pytest.mark.skipif(
+    not HAS_GUI or os.environ.get("CI") == "true",
+    reason="PyQt6/GUI not available or running in CI",
+)
 
 
 @pytest.mark.asyncio
