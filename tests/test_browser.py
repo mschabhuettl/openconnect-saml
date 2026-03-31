@@ -3,8 +3,16 @@ import sys
 import attr
 import pytest
 
-from openconnect_saml.browser import Browser
+try:
+    from openconnect_saml.browser import Browser
+
+    HAS_GUI = True
+except ImportError:
+    HAS_GUI = False
+
 from openconnect_saml.config import DisplayMode
+
+pytestmark = pytest.mark.skipif(not HAS_GUI, reason="PyQt6/GUI not available")
 
 
 @pytest.mark.asyncio
