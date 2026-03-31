@@ -5,6 +5,20 @@ All notable changes to this project will be documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
+
+## [0.2.0] - 2026-03-31
+
+### Added
+- **Headless/CLI mode** — browser-free SAML authentication via `--headless` flag
+- Auto-authenticate: form parsing with username/password/TOTP injection
+- Local callback server for MFA flows that require a browser
+- PyQt6 now optional: `pip install openconnect-saml` works without GUI deps
+- GUI extras: `pip install openconnect-saml[gui]` for browser mode
+- 28 new headless tests (126 total)
+
+### Fixed
+- Browser tests properly skipped in CI (no display server)
+- Platform-specific tests skipped on Windows
 ## [0.1.1] - 2026-03-30
 
 ### Improved
