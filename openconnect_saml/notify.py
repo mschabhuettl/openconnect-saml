@@ -58,9 +58,9 @@ def _notify_macos(title: str, message: str, level: str = NotificationLevel.INFO)
     if not osascript:
         return False
 
-    # Escape for AppleScript string
-    safe_title = title.replace('"', '\\"')
-    safe_message = message.replace('"', '\\"')
+    # Escape for AppleScript string: backslashes first, then quotes
+    safe_title = title.replace("\\", "\\\\").replace('"', '\\"')
+    safe_message = message.replace("\\", "\\\\").replace('"', '\\"')
 
     script = (
         f'display notification "{safe_message}" with title "{safe_title}" subtitle "{APP_NAME}"'
