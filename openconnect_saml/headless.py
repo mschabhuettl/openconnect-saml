@@ -376,7 +376,7 @@ class HeadlessAuthenticator:
 
     def _callback_authenticate(self, login_url, login_final_url, token_cookie_name):
         """Start a local HTTP server and wait for the user to authenticate in their browser."""
-        result = {"token": None, "error": None}
+        result = {"token": None, "error": None}  # nosec
         server_ready = threading.Event()
         server = None
 

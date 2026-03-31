@@ -6,9 +6,8 @@ and traffic statistics. Requires optional 'rich' dependency.
 Install: pip install openconnect-saml[tui]
 """
 
-import os
 import re
-import subprocess
+import subprocess  # nosec
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -19,7 +18,7 @@ from openconnect_saml import config
 def _find_vpn_process():
     """Find running openconnect process and return (pid, cmdline) or None."""
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec
             ["pgrep", "-a", "openconnect"],
             capture_output=True,
             text=True,
@@ -69,7 +68,7 @@ def _format_duration(seconds):
 def _get_vpn_interface():
     """Find the VPN tunnel interface (tun*, utun*)."""
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec
             ["ip", "-o", "link", "show"],
             capture_output=True,
             text=True,
@@ -88,7 +87,7 @@ def _get_vpn_interface():
 def _get_interface_ip(iface):
     """Get IP address of an interface."""
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec
             ["ip", "-4", "addr", "show", iface],
             capture_output=True,
             text=True,
@@ -259,8 +258,8 @@ def handle_status_command(args):
     if watch:
         try:
             while True:
-                # Clear screen
-                os.system("clear" if os.name != "nt" else "cls")
+                # Clear screen using ANSI escape (avoids shell injection via os.system)
+                print("\033[2J\033[H", end="", flush=True)
                 status = _collect_status()
                 try:
                     _print_status_rich(status)

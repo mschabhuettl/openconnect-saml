@@ -42,6 +42,10 @@
 | 👤 **Multi-Profile** | Save and switch between named VPN configurations |
 | 📊 **Status TUI** | Live connection status with traffic stats (`rich` optional) |
 | ⌨️ **Shell Completion** | Tab completion for bash, zsh, and fish |
+| 🔀 **Split-Tunnel** | Route only specific subnets through the VPN |
+| 🔑 **Bitwarden TOTP** | Fetch TOTP from Bitwarden CLI (`bw`) |
+| 🔔 **Notifications** | Desktop notifications for VPN events |
+| 🧙 **Setup Wizard** | Interactive `setup` command for easy configuration |
 
 ## 📦 Installation
 
@@ -197,6 +201,81 @@ account_id = 42
 
 > ⚠️ HTTPS is strongly recommended for the 2FAuth URL. HTTP connections will trigger a warning.
 
+### Bitwarden TOTP Provider
+
+Fetch TOTP codes from your Bitwarden vault via the `bw` CLI:
+
+```bash
+# Via CLI flags
+openconnect-saml --server vpn.example.com --headless --user user@domain.com \
+  --totp-source bitwarden \
+  --bw-item-id YOUR_VAULT_ITEM_UUID
+
+# Or via config file (~/.config/openconnect-saml/config.toml)
+```
+
+```toml
+[credentials]
+username = "user@example.com"
+totp_source = "bitwarden"
+
+[bitwarden]
+item_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+```
+
+**Setup:**
+1. Install the [Bitwarden CLI](https://bitwarden.com/help/cli/) (`bw`)
+2. Log in: `bw login` and unlock: `bw unlock` → export `BW_SESSION`
+3. Find your item ID: `bw list items --search "VPN"` → note the `id` field
+4. Configure: `--totp-source bitwarden --bw-item-id <uuid>`
+
+### Split-Tunnel Routing
+
+Route only specific subnets through the VPN (split-tunneling):
+
+```bash
+# Include specific routes
+openconnect-saml connect work --route 10.0.0.0/8 --route 172.16.0.0/12
+
+# Exclude routes (bypass VPN for these)
+openconnect-saml connect work --no-route 192.168.0.0/16
+
+# Combine both
+openconnect-saml connect work --route 10.0.0.0/8 --no-route 10.0.99.0/24
+```
+
+Or configure per-profile:
+```toml
+[profiles.work]
+server = "vpn.company.com"
+routes = ["10.0.0.0/8", "172.16.0.0/12"]
+no_routes = ["192.168.0.0/16"]
+```
+
+### Desktop Notifications
+
+Get notified about VPN events (connect, disconnect, reconnect, errors):
+
+```bash
+# Enable via CLI
+openconnect-saml connect work --notify
+
+# Or in config
+notifications = true
+```
+
+Supports: Linux (`notify-send`), macOS (`osascript`), fallback (terminal bell).
+
+### Setup Wizard
+
+Interactive configuration wizard for first-time setup:
+
+```bash
+openconnect-saml setup
+```
+
+Guides through: server URL, username, TOTP provider, browser mode, auto-reconnect, and notifications. Saves a named profile.
+
 ### Multi-Profile
 
 Save named VPN configurations and switch between them:
@@ -276,12 +355,16 @@ openconnect-saml completion install
 ```bash
 --headless              # No browser, terminal-only authentication
 --browser BACKEND       # Browser backend: qt, chrome, headless
---totp-source SOURCE    # TOTP provider: local (default) or 2fauth
+--totp-source SOURCE    # TOTP provider: local, 2fauth, or bitwarden
 --2fauth-url URL        # 2FAuth instance URL
 --2fauth-token TOKEN    # 2FAuth Personal Access Token
 --2fauth-account-id ID  # 2FAuth account ID for VPN TOTP
+--bw-item-id UUID       # Bitwarden vault item ID for TOTP
 --reconnect             # Auto-reconnect on VPN drops
 --max-retries N         # Max reconnection attempts (default: unlimited)
+--route CIDR            # Include route in VPN tunnel (repeatable)
+--no-route CIDR         # Exclude route from VPN tunnel (repeatable)
+--notify                # Enable desktop notifications
 --no-sudo               # Don't use sudo (for --script-tun)
 --ssl-legacy            # Enable legacy SSL renegotiation
 --csd-wrapper PATH      # CSD/hostscan wrapper script

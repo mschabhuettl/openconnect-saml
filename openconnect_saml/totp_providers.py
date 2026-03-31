@@ -1,16 +1,20 @@
-"""TOTP provider abstraction — local (pyotp/keyring) or remote (2FAuth API).
+"""TOTP provider abstraction — local (pyotp/keyring), remote (2FAuth API), or Bitwarden CLI.
 
 Providers:
 - ``LocalTotpProvider``: generates TOTP locally from a secret stored in
   keyring or memory (the original behaviour).
 - ``TwoFAuthProvider``: fetches a one-time password from a
   `2FAuth <https://docs.2fauth.app/>`_ instance via its REST API.
+- ``BitwardenProvider``: fetches a TOTP code from Bitwarden via the ``bw`` CLI.
 """
 
 from __future__ import annotations
 
 import abc
 import binascii
+import os
+import shutil
+import subprocess  # nosec
 from urllib.parse import urlparse
 
 import keyring
@@ -178,3 +182,88 @@ class TwoFAuthProvider(TotpProvider):
 
         logger.info("TOTP fetched from 2FAuth successfully")
         return str(otp)
+
+
+# ---------------------------------------------------------------------------
+# Bitwarden CLI provider
+# ---------------------------------------------------------------------------
+
+
+class BitwardenError(Exception):
+    """Raised when the Bitwarden CLI call fails."""
+
+
+class BitwardenProvider(TotpProvider):
+    """Fetch TOTP from Bitwarden via the ``bw`` CLI.
+
+    Requires the Bitwarden CLI (``bw``) to be installed and either a session
+    key in ``BW_SESSION`` or an unlocked vault.
+
+    Parameters
+    ----------
+    item_id : str
+        UUID of the Bitwarden vault item containing the TOTP secret.
+    timeout : int
+        CLI command timeout in seconds.
+    """
+
+    def __init__(self, item_id: str, timeout: int = 10):
+        self.item_id = item_id
+        self.timeout = timeout
+
+    def get_totp(self) -> str | None:
+        bw_path = shutil.which("bw")
+        if not bw_path:
+            logger.error("Bitwarden CLI (bw) not found in PATH")
+            return None
+
+        logger.info("Fetching TOTP from Bitwarden CLI...")
+
+        env = dict(os.environ)
+        # BW_SESSION may already be set in the environment
+
+        try:
+            result = subprocess.run(  # nosec
+                [bw_path, "get", "totp", self.item_id],
+                capture_output=True,
+                text=True,
+                timeout=self.timeout,
+                env=env,
+            )
+        except subprocess.TimeoutExpired:
+            logger.error("Bitwarden CLI timed out", timeout=self.timeout)
+            return None
+        except FileNotFoundError:
+            logger.error("Bitwarden CLI (bw) not found")
+            return None
+        except OSError as exc:
+            logger.error("Bitwarden CLI failed", error=str(exc))
+            return None
+
+        if result.returncode != 0:
+            stderr = result.stderr.strip()
+            if "locked" in stderr.lower() or "not logged in" in stderr.lower():
+                logger.error(
+                    "Bitwarden vault is locked or not logged in. "
+                    "Run 'bw unlock' and export BW_SESSION, or 'bw login' first."
+                )
+            elif "not found" in stderr.lower():
+                logger.error(
+                    "Bitwarden item not found",
+                    item_id=self.item_id,
+                )
+            else:
+                logger.error(
+                    "Bitwarden CLI returned error",
+                    exit_code=result.returncode,
+                    stderr=stderr,
+                )
+            return None
+
+        otp = result.stdout.strip()
+        if not otp:
+            logger.error("Bitwarden CLI returned empty TOTP")
+            return None
+
+        logger.info("TOTP fetched from Bitwarden successfully")
+        return otp

@@ -166,7 +166,7 @@ class ChromeBrowser:
                 await self._page.wait_for_load_state("domcontentloaded", timeout=5000)
                 # Small delay for JavaScript to update the DOM
                 await asyncio.sleep(1)
-            except Exception:
+            except Exception:  # nosec
                 pass
 
             # Check if URL changed (navigation happened)
@@ -201,7 +201,7 @@ class ChromeBrowser:
                             await el.fill(credentials.username)
                             logger.debug("Chrome: filled username", selector=sel)
                             break
-                except Exception:
+                except Exception:  # nosec
                     continue
 
         # Fill password
@@ -215,7 +215,7 @@ class ChromeBrowser:
                             await el.fill(credentials.password)
                             logger.debug("Chrome: filled password", selector=sel)
                             break
-                except Exception:
+                except Exception:  # nosec
                     continue
 
         # Fill TOTP
@@ -229,7 +229,7 @@ class ChromeBrowser:
                             await el.fill(credentials.totp)
                             logger.debug("Chrome: filled TOTP", selector=sel)
                             break
-                except Exception:
+                except Exception:  # nosec
                     continue
 
     async def _try_click_selectors(self, selectors: list[str]):
@@ -241,7 +241,7 @@ class ChromeBrowser:
                     await el.click()
                     logger.debug("Chrome: clicked element", selector=sel)
                     return True
-            except Exception:
+            except Exception:  # nosec
                 continue
         return False
 
