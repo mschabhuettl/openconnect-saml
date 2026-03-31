@@ -404,21 +404,21 @@ class TestCLIFlags:
     """Test that --headless CLI flag works correctly."""
 
     def test_headless_flag(self):
-        from openconnect_saml.cli import create_argparser
+        from openconnect_saml.cli import create_legacy_argparser as create_argparser
 
         parser = create_argparser()
         args = parser.parse_args(["-s", "vpn.example.com", "--headless"])
         assert args.headless is True
 
     def test_headless_default_false(self):
-        from openconnect_saml.cli import create_argparser
+        from openconnect_saml.cli import create_legacy_argparser as create_argparser
 
         parser = create_argparser()
         args = parser.parse_args(["-s", "vpn.example.com"])
         assert args.headless is False
 
     def test_headless_with_user(self):
-        from openconnect_saml.cli import create_argparser
+        from openconnect_saml.cli import create_legacy_argparser as create_argparser
 
         parser = create_argparser()
         args = parser.parse_args(

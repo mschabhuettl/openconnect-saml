@@ -38,6 +38,9 @@
 | 🌐 **Proxy** | SOCKS and HTTP proxy support |
 | 📜 **Certificates** | Client certificate handling with auto-fallback |
 | 🐳 **Docker-ready** | Headless mode for containerized deployments |
+| 👤 **Multi-Profile** | Save and switch between named VPN configurations |
+| 📊 **Status TUI** | Live connection status with traffic stats (`rich` optional) |
+| ⌨️ **Shell Completion** | Tab completion for bash, zsh, and fish |
 
 ## 📦 Installation
 
@@ -54,6 +57,9 @@ playwright install chromium
 
 # With FIDO2/YubiKey support
 pip install "openconnect-saml[fido2]"
+
+# With connection status TUI (rich)
+pip install "openconnect-saml[tui]"
 
 # Arch Linux (AUR)
 yay -S openconnect-saml
@@ -185,6 +191,80 @@ account_id = 42
 
 > ⚠️ HTTPS is strongly recommended for the 2FAuth URL. HTTP connections will trigger a warning.
 
+### Multi-Profile
+
+Save named VPN configurations and switch between them:
+
+```bash
+# Add profiles
+openconnect-saml profiles add work --server vpn.company.com --user user@company.com
+openconnect-saml profiles add lab --server lab-vpn.company.com --user admin
+
+# List profiles
+openconnect-saml profiles list
+
+# Connect to a profile
+openconnect-saml connect work
+openconnect-saml connect lab
+
+# Override server from profile
+openconnect-saml connect work --server alt-vpn.company.com
+
+# Remove a profile
+openconnect-saml profiles remove lab
+
+# Legacy mode still works (backwards-compatible)
+openconnect-saml --server vpn.example.com
+```
+
+Config file format:
+```toml
+[profiles.work]
+server = "vpn.company.com"
+user_group = "employees"
+name = "Work VPN"
+
+[profiles.work.credentials]
+username = "user@company.com"
+totp_source = "2fauth"
+
+[profiles.lab]
+server = "lab-vpn.company.com"
+name = "Lab VPN"
+
+[profiles.lab.credentials]
+username = "admin"
+```
+
+### Connection Status
+
+View live VPN connection status:
+
+```bash
+# One-shot status
+openconnect-saml status
+
+# Live-updating status (refreshes every 2s)
+openconnect-saml status --watch
+```
+
+Install with rich for a formatted table display:
+```bash
+pip install "openconnect-saml[tui]"
+```
+
+### Shell Completion
+
+```bash
+# Generate completion scripts
+openconnect-saml completion bash
+openconnect-saml completion zsh
+openconnect-saml completion fish
+
+# Auto-install to default locations
+openconnect-saml completion install
+```
+
 ### Advanced Options
 
 ```bash
@@ -233,6 +313,15 @@ name = "My VPN"
 
 [credentials]
 username = "user@example.com"
+
+# Named profiles (optional)
+[profiles.work]
+server = "vpn.company.com"
+user_group = "employees"
+name = "Work VPN"
+
+[profiles.work.credentials]
+username = "user@company.com"
 ```
 
 <details>

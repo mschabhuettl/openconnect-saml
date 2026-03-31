@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "openconnect-saml"
-version = "0.4.0"
+version = "0.5.0"
 description = "OpenConnect wrapper with Azure AD (SAML) SSO support for Cisco SSL-VPNs"
 readme = "README.md"
 license = "GPL-3.0-or-later"
@@ -50,6 +50,9 @@ chrome = [
 ]
 fido2 = [
     "fido2>=1.0",
+]
+tui = [
+    "rich>=13.0",
 ]
 dev = [
     "pytest>=8.0",
