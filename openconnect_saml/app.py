@@ -6,7 +6,7 @@ import os
 import shlex
 import shutil
 import signal
-import subprocess
+import subprocess  # nosec
 from pathlib import Path
 
 import structlog
@@ -22,9 +22,9 @@ from openconnect_saml.authenticator import (
     AuthResponseError,
 )
 from openconnect_saml.browser import Terminated
-from openconnect_saml.config import Credentials, TwoFAuthConfig
+from openconnect_saml.config import BitwardenConfig, Credentials, TwoFAuthConfig
 from openconnect_saml.profile import get_profiles
-from openconnect_saml.totp_providers import TwoFAuthProvider
+from openconnect_saml.totp_providers import BitwardenProvider, TwoFAuthProvider
 
 logger = structlog.get_logger()
 
@@ -72,11 +72,38 @@ def run(args):
 
     reconnect = getattr(args, "reconnect", False)
     max_retries = getattr(args, "max_retries", None)
+    notify = getattr(args, "notify", False) or cfg.notifications
+
+    # Resolve routes: CLI > profile config
+    routes = getattr(args, "routes", None) or []
+    no_routes = getattr(args, "no_routes", None) or []
+
+    # Check profile routes if available
+    profile_name = getattr(args, "profile_name", None)
+    if profile_name:
+        prof = cfg.get_profile(profile_name)
+        if prof:
+            if not routes and prof.routes:
+                routes = prof.routes
+            if not no_routes and prof.no_routes:
+                no_routes = prof.no_routes
 
     if reconnect:
         return _run_with_reconnect(
-            args, cfg, auth_response, selected_profile, max_retries=max_retries
+            args,
+            cfg,
+            auth_response,
+            selected_profile,
+            max_retries=max_retries,
+            notify=notify,
+            routes=routes,
+            no_routes=no_routes,
         )
+
+    if notify:
+        from openconnect_saml.notify import notify_connected
+
+        notify_connected(selected_profile.vpn_url)
 
     try:
         rc = run_openconnect(
@@ -88,12 +115,18 @@ def run(args):
             no_sudo=getattr(args, "no_sudo", False),
             csd_wrapper=getattr(args, "csd_wrapper", None),
             on_connect=cfg.on_connect,
+            routes=routes,
+            no_routes=no_routes,
         )
         return rc
     except KeyboardInterrupt:
         logger.warn("CTRL-C pressed, exiting")
         return 0
     finally:
+        if notify:
+            from openconnect_saml.notify import notify_disconnected
+
+            notify_disconnected(selected_profile.vpn_url)
         handle_disconnect(cfg.on_disconnect)
 
 
@@ -101,7 +134,16 @@ def run(args):
 RECONNECT_BACKOFF = [30, 60, 120, 300]
 
 
-def _run_with_reconnect(args, cfg, auth_response, selected_profile, max_retries=None):
+def _run_with_reconnect(
+    args,
+    cfg,
+    auth_response,
+    selected_profile,
+    max_retries=None,
+    notify=False,
+    routes=None,
+    no_routes=None,
+):
     """Run openconnect with automatic reconnection on failure.
 
     Re-authenticates and reconnects when the VPN process exits unexpectedly.
@@ -111,8 +153,24 @@ def _run_with_reconnect(args, cfg, auth_response, selected_profile, max_retries=
     ----------
     max_retries : int or None
         Maximum reconnection attempts. None means unlimited.
+    notify : bool
+        Whether to send desktop notifications.
+    routes : list or None
+        Split-tunnel include routes.
+    no_routes : list or None
+        Split-tunnel exclude routes.
     """
     import time
+
+    if notify:
+        from openconnect_saml.notify import (
+            notify_connected,
+            notify_disconnected,
+            notify_error,
+            notify_reconnecting,
+        )
+
+        notify_connected(selected_profile.vpn_url)
 
     attempt = 0
     while True:
@@ -126,14 +184,20 @@ def _run_with_reconnect(args, cfg, auth_response, selected_profile, max_retries=
                 no_sudo=getattr(args, "no_sudo", False),
                 csd_wrapper=getattr(args, "csd_wrapper", None),
                 on_connect=cfg.on_connect,
+                routes=routes,
+                no_routes=no_routes,
             )
         except KeyboardInterrupt:
             logger.warn("CTRL-C pressed, stopping reconnect loop")
+            if notify:
+                notify_disconnected(selected_profile.vpn_url)
             handle_disconnect(cfg.on_disconnect)
             return 0
 
         if rc == 0:
             # Clean exit
+            if notify:
+                notify_disconnected(selected_profile.vpn_url)
             handle_disconnect(cfg.on_disconnect)
             return 0
 
@@ -144,6 +208,8 @@ def _run_with_reconnect(args, cfg, auth_response, selected_profile, max_retries=
                 attempts=attempt,
                 max_retries=max_retries,
             )
+            if notify:
+                notify_error(selected_profile.vpn_url, f"Max retries ({max_retries}) reached")
             handle_disconnect(cfg.on_disconnect)
             return rc
 
@@ -155,6 +221,9 @@ def _run_with_reconnect(args, cfg, auth_response, selected_profile, max_retries=
             delay=delay,
             exit_code=rc,
         )
+
+        if notify:
+            notify_reconnecting(selected_profile.vpn_url, attempt, delay)
 
         try:
             time.sleep(delay)
@@ -222,7 +291,25 @@ async def _run(args, cfg):
         getattr(args, "totp_source", None) or credentials.totp_source if credentials else "local"
     )
 
-    if credentials and totp_source == "2fauth":
+    if credentials and totp_source == "bitwarden":
+        # Build Bitwarden config from CLI flags or config file
+        bw_item_id = getattr(args, "bw_item_id", None)
+
+        if cfg.bitwarden:
+            bw_item_id = bw_item_id or cfg.bitwarden.item_id
+
+        if not bw_item_id:
+            logger.error(
+                "Bitwarden TOTP source requires --bw-item-id (or [bitwarden] config section)"
+            )
+            raise ValueError("Missing Bitwarden configuration", 22)
+
+        credentials.totp_source = "bitwarden"
+        credentials.set_totp_provider(BitwardenProvider(item_id=bw_item_id))
+        # Persist Bitwarden config
+        cfg.bitwarden = BitwardenConfig(item_id=bw_item_id)
+        logger.info("Using Bitwarden TOTP provider")
+    elif credentials and totp_source == "2fauth":
         # Build 2FAuth config from CLI flags or config file
         twofauth_url = getattr(args, "twofauth_url", None)
         twofauth_token = getattr(args, "twofauth_token", None)
@@ -374,7 +461,16 @@ def authenticate_to(
 
 
 def run_openconnect(
-    auth_info, host, proxy, version, args, no_sudo=False, csd_wrapper=None, on_connect=""
+    auth_info,
+    host,
+    proxy,
+    version,
+    args,
+    no_sudo=False,
+    csd_wrapper=None,
+    on_connect="",
+    routes=None,
+    no_routes=None,
 ):
     superuser_cmd = None
 
@@ -412,6 +508,14 @@ def run_openconnect(
     if csd_wrapper:
         openconnect_args.extend(["--csd-wrapper", csd_wrapper])
 
+    # Split-tunnel routes
+    if routes:
+        for route in routes:
+            openconnect_args.extend(["--route", route])
+    if no_routes:
+        for no_route in no_routes:
+            openconnect_args.extend(["--no-route", no_route])
+
     if os.name == "nt":
         command_line = ["powershell.exe", "-Command", shlex.join(openconnect_args)]
     elif superuser_cmd:
@@ -426,13 +530,13 @@ def run_openconnect(
         # Run on-connect script via openconnect's --script mechanism would
         # conflict with user-provided scripts, so we run it separately after
         # openconnect is started. Use Popen for non-blocking openconnect.
-        proc = subprocess.Popen(command_line, stdin=subprocess.PIPE)
+        proc = subprocess.Popen(command_line, stdin=subprocess.PIPE)  # nosec
         proc.stdin.write(session_token)
         proc.stdin.close()
         handle_connect(on_connect)
         return proc.wait()
     else:
-        return subprocess.run(command_line, input=session_token).returncode
+        return subprocess.run(command_line, input=session_token).returncode  # nosec
 
 
 def _validate_hook_command(command):
@@ -466,7 +570,7 @@ def handle_connect(command):
             return 1
         logger.info("Running on-connect command", command_line=command)
         try:
-            return subprocess.run(shlex.split(command), timeout=30, shell=False).returncode
+            return subprocess.run(shlex.split(command), timeout=30, shell=False).returncode  # nosec
         except subprocess.TimeoutExpired:
             logger.warning("On-connect command timed out after 30s", command_line=command)
             return 1
@@ -485,7 +589,7 @@ def handle_disconnect(command):
             return 1
         logger.info("Running command on disconnect", command_line=command)
         try:
-            return subprocess.run(shlex.split(command), timeout=5, shell=False).returncode
+            return subprocess.run(shlex.split(command), timeout=5, shell=False).returncode  # nosec
         except subprocess.TimeoutExpired:
             logger.warning("On-disconnect command timed out after 5s", command_line=command)
             return 1

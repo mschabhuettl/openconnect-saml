@@ -6,6 +6,34 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.6.0] - 2026-03-31
+
+### Added
+- **Split-tunnel routing** — include/exclude specific subnets from the VPN tunnel
+  - CLI: `--route 10.0.0.0/8` and `--no-route 192.168.0.0/16` (repeatable)
+  - Config: `routes` and `no_routes` arrays in profile sections
+  - Routes are passed directly as openconnect `--route` / `--no-route` arguments
+- **Bitwarden TOTP provider** — fetch TOTP codes from Bitwarden CLI (`bw`)
+  - Config: `totp_source = "bitwarden"` with `[bitwarden]` section (`item_id`)
+  - CLI: `--totp-source bitwarden --bw-item-id <uuid>`
+  - Supports `BW_SESSION` environment variable for unlocked vaults
+- **Desktop notifications** — system notifications for VPN events
+  - Events: Connected, Disconnected, Reconnecting, Error
+  - Linux: `notify-send` (libnotify), macOS: `osascript`, fallback: terminal bell
+  - CLI: `--notify` flag, Config: `notifications = true`
+- **Interactive setup wizard** — `openconnect-saml setup`
+  - Guides through: server, username, TOTP source, browser mode, auto-reconnect, notifications
+  - Supports all TOTP providers (local, 2FAuth, Bitwarden)
+  - Creates named profiles with one command
+- 71 new tests (344 total)
+
+### Fixed
+- **Security: B605 (High)** — replaced `os.system("clear")` with ANSI escape sequence
+  in TUI watch mode (no shell injection risk)
+- All bandit findings reviewed and annotated with `# nosec` where appropriate
+
+---
+
 ## [0.5.0] - 2026-03-31
 
 ### Added

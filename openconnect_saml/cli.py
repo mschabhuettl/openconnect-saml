@@ -127,9 +127,9 @@ def _add_connection_args(parser):
     totp_group.add_argument(
         "--totp-source",
         dest="totp_source",
-        choices=["local", "2fauth"],
+        choices=["local", "2fauth", "bitwarden"],
         default=None,
-        help="TOTP provider: 'local' or '2fauth'",
+        help="TOTP provider: 'local', '2fauth', or 'bitwarden'",
     )
     totp_group.add_argument(
         "--2fauth-url",
@@ -150,6 +150,12 @@ def _add_connection_args(parser):
         default=None,
         help="2FAuth account ID",
     )
+    totp_group.add_argument(
+        "--bw-item-id",
+        dest="bw_item_id",
+        default=None,
+        help="Bitwarden vault item ID for TOTP",
+    )
 
     reconnect_group = parser.add_argument_group("Reconnect options")
     reconnect_group.add_argument(
@@ -164,6 +170,31 @@ def _add_connection_args(parser):
         type=int,
         default=None,
         help="Maximum reconnection attempts (default: unlimited)",
+    )
+
+    route_group = parser.add_argument_group("Split-tunnel routing")
+    route_group.add_argument(
+        "--route",
+        dest="routes",
+        action="append",
+        default=None,
+        help="Include route in VPN tunnel (CIDR, e.g. 10.0.0.0/8). Repeatable.",
+    )
+    route_group.add_argument(
+        "--no-route",
+        dest="no_routes",
+        action="append",
+        default=None,
+        help="Exclude route from VPN tunnel (CIDR, e.g. 192.168.0.0/16). Repeatable.",
+    )
+
+    notification_group = parser.add_argument_group("Notification options")
+    notification_group.add_argument(
+        "--notify",
+        dest="notify",
+        help="Enable desktop notifications for VPN events",
+        action="store_true",
+        default=False,
     )
 
     connection_group = parser.add_argument_group("Connection options")
@@ -259,6 +290,9 @@ def create_argparser():
         choices=["bash", "zsh", "fish", "install", "_profiles"],
         help="Shell type or 'install' for auto-installation",
     )
+
+    # 'setup' subcommand (interactive config wizard)
+    subparsers.add_parser("setup", help="Interactive configuration wizard")
 
     # 'service' subcommand (for backwards compat, handled separately)
     subparsers.add_parser("service", help="Manage systemd VPN service", add_help=False)
@@ -365,6 +399,13 @@ def _handle_completion_command(args):
     return handle_completion_command(args)
 
 
+def _handle_setup_command():
+    """Handle the 'setup' subcommand (interactive wizard)."""
+    from openconnect_saml.setup_wizard import run_setup_wizard
+
+    return run_setup_wizard()
+
+
 def _handle_connect(args, parser):
     """Handle the 'connect' subcommand or legacy invocation."""
     # --browser flag overrides --headless
@@ -422,7 +463,7 @@ def _is_legacy_invocation(argv):
     """Check if the invocation uses legacy (no subcommand) style."""
     if not argv:
         return True
-    known_subcommands = {"connect", "profiles", "status", "completion", "service"}
+    known_subcommands = {"connect", "profiles", "status", "completion", "service", "setup"}
     first = argv[0]
     # If the first arg starts with - or is not a subcommand, it's legacy
     return first.startswith("-") or first not in known_subcommands
@@ -452,6 +493,8 @@ def main():
             return _handle_status_command(args)
         elif args.command == "completion":
             return _handle_completion_command(args)
+        elif args.command == "setup":
+            return _handle_setup_command()
         else:
             parser.print_help()
             return 0

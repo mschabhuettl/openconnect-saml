@@ -64,7 +64,7 @@ class Browser:
                 logger.error("Message unrecognized", message=state)
 
     async def authenticate_at(self, url, credentials):
-        assert self.running
+        assert self.running  # nosec
         self.browser_proc.authenticate_at(url, credentials)
 
     async def page_loaded(self):

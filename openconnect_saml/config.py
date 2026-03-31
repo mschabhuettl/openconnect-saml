@@ -114,6 +114,13 @@ class TwoFAuthConfig(ConfigNode):
 
 
 @attr.s
+class BitwardenConfig(ConfigNode):
+    """Configuration for the Bitwarden TOTP provider."""
+
+    item_id = attr.ib(default="")
+
+
+@attr.s
 class Credentials(ConfigNode):
     username = attr.ib()
     totp_source = attr.ib(default="local")  # "local" or "2fauth"
@@ -225,6 +232,22 @@ def _convert_twofauth(val):
     return TwoFAuthConfig.from_dict(val)
 
 
+def _convert_bitwarden(val):
+    if val is None:
+        return None
+    if isinstance(val, BitwardenConfig):
+        return val
+    return BitwardenConfig.from_dict(val)
+
+
+def _convert_str_list(val):
+    if val is None:
+        return []
+    if isinstance(val, list):
+        return [str(v) for v in val]
+    return val
+
+
 @attr.s
 class ProfileConfig(ConfigNode):
     """A named VPN profile with server, credentials, and optional settings."""
@@ -234,6 +257,8 @@ class ProfileConfig(ConfigNode):
     name = attr.ib(converter=str, default="")
     credentials = attr.ib(default=None, converter=Credentials.from_dict)
     twofauth = attr.ib(default=None, converter=_convert_twofauth)
+    routes = attr.ib(factory=list, converter=_convert_str_list)
+    no_routes = attr.ib(factory=list, converter=_convert_str_list)
 
     @classmethod
     def from_dict(cls, d):
@@ -278,8 +303,10 @@ class Config(ConfigNode):
     default_profile = attr.ib(default=None, converter=HostProfile.from_dict)
     credentials = attr.ib(default=None, converter=Credentials.from_dict)
     twofauth = attr.ib(default=None, converter=_convert_twofauth)
+    bitwarden = attr.ib(default=None, converter=_convert_bitwarden)
     profiles = attr.ib(factory=dict, converter=_convert_profiles)
     active_profile = attr.ib(default=None)
+    notifications = attr.ib(default=False, converter=bool)
 
     @classmethod
     def from_dict(cls, d):

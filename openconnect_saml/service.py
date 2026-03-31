@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import shlex
 import shutil
-import subprocess
+import subprocess  # nosec
 import sys
 import textwrap
 from pathlib import Path
@@ -130,11 +130,11 @@ def install(
         return 1
 
     # Reload systemd
-    subprocess.run(["systemctl", "daemon-reload"], check=True)
+    subprocess.run(["systemctl", "daemon-reload"], check=True)  # nosec
     logger.info("Systemd unit installed", unit=unit_name)
 
     # Enable the unit
-    subprocess.run(["systemctl", "enable", unit_name], check=True)
+    subprocess.run(["systemctl", "enable", unit_name], check=True)  # nosec
     logger.info("Systemd unit enabled", unit=unit_name)
 
     print(f"✓ Unit installed: {unit_path}")
@@ -154,8 +154,8 @@ def uninstall(server: str) -> int:
     logger.info("Uninstalling systemd unit", unit=unit_name)
 
     # Stop and disable first
-    subprocess.run(["systemctl", "stop", unit_name], check=False)
-    subprocess.run(["systemctl", "disable", unit_name], check=False)
+    subprocess.run(["systemctl", "stop", unit_name], check=False)  # nosec
+    subprocess.run(["systemctl", "disable", unit_name], check=False)  # nosec
 
     try:
         unit_path.unlink()
@@ -163,7 +163,7 @@ def uninstall(server: str) -> int:
         logger.error("Permission denied. Run with sudo or as root.")
         return 1
 
-    subprocess.run(["systemctl", "daemon-reload"], check=True)
+    subprocess.run(["systemctl", "daemon-reload"], check=True)  # nosec
     logger.info("Systemd unit removed", unit=unit_name)
     print(f"✓ Unit removed: {unit_path}")
     return 0
@@ -172,7 +172,7 @@ def uninstall(server: str) -> int:
 def start(server: str) -> int:
     """Start the systemd unit for the given server."""
     unit_name = _unit_name(server)
-    result = subprocess.run(["systemctl", "start", unit_name])
+    result = subprocess.run(["systemctl", "start", unit_name])  # nosec
     if result.returncode == 0:
         print(f"✓ Started {unit_name}")
     else:
@@ -183,7 +183,7 @@ def start(server: str) -> int:
 def stop(server: str) -> int:
     """Stop the systemd unit for the given server."""
     unit_name = _unit_name(server)
-    result = subprocess.run(["systemctl", "stop", unit_name])
+    result = subprocess.run(["systemctl", "stop", unit_name])  # nosec
     if result.returncode == 0:
         print(f"✓ Stopped {unit_name}")
     else:
@@ -195,10 +195,10 @@ def status(server: str | None = None) -> int:
     """Show status of the systemd unit(s)."""
     if server:
         unit_name = _unit_name(server)
-        return subprocess.run(["systemctl", "status", unit_name]).returncode
+        return subprocess.run(["systemctl", "status", unit_name]).returncode  # nosec
 
     # Show all openconnect-saml units
-    result = subprocess.run(
+    result = subprocess.run(  # nosec
         ["systemctl", "list-units", f"{UNIT_PREFIX}@*", "--no-pager"],
         capture_output=True,
         text=True,
@@ -220,7 +220,7 @@ def logs(server: str | None = None, follow: bool = False) -> int:
         cmd.extend(["-u", f"{UNIT_PREFIX}@*"])
     if follow:
         cmd.append("-f")
-    return subprocess.run(cmd).returncode
+    return subprocess.run(cmd).returncode  # nosec
 
 
 def handle_service_command(args) -> int:
