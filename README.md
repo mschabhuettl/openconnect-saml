@@ -1,87 +1,111 @@
-# openconnect-saml
+<h1 align="center">
+  🔐 openconnect-saml
+</h1>
 
-OpenConnect wrapper supporting **Azure AD / SAML authentication** for Cisco AnyConnect SSL-VPNs.
+<p align="center">
+  <strong>OpenConnect wrapper with Azure AD / SAML authentication for Cisco AnyConnect VPNs</strong>
+</p>
 
-Modernized fork based on [vlaci/openconnect-sso](https://github.com/vlaci/openconnect-sso) with improvements from [kowyo/openconnect-lite](https://github.com/kowyo/openconnect-lite).
+<p align="center">
+  <a href="https://pypi.org/project/openconnect-saml/"><img src="https://img.shields.io/pypi/v/openconnect-saml?color=blue&label=PyPI" alt="PyPI"></a>
+  <a href="https://aur.archlinux.org/packages/openconnect-saml"><img src="https://img.shields.io/aur/version/openconnect-saml?color=1793D1&label=AUR" alt="AUR"></a>
+  <a href="https://github.com/mschabhuettl/openconnect-saml/actions"><img src="https://img.shields.io/github/actions/workflow/status/mschabhuettl/openconnect-saml/test.yml?label=CI" alt="CI"></a>
+  <a href="https://github.com/mschabhuettl/openconnect-saml/blob/main/LICENSE"><img src="https://img.shields.io/github/license/mschabhuettl/openconnect-saml?color=green" alt="License"></a>
+  <a href="https://pypi.org/project/openconnect-saml/"><img src="https://img.shields.io/pypi/pyversions/openconnect-saml" alt="Python"></a>
+</p>
 
-## Features
+<p align="center">
+  <em>Maintained fork of <a href="https://github.com/vlaci/openconnect-sso">vlaci/openconnect-sso</a> with improvements from <a href="https://github.com/kowyo/openconnect-lite">kowyo/openconnect-lite</a></em>
+</p>
 
-- SAML / Azure AD authentication via embedded Qt WebEngine browser **or headless CLI mode**
-- **Headless mode**: No display/GUI required — works on servers, containers, and SSH sessions
-- Automatic form-filling for username, password, and TOTP
-- Password stored in system keyring (with in-memory fallback)
-- TOTP secret configurable directly in config file
-- Profile auto-detection from AnyConnect XML profiles
-- Proxy support (SOCKS/HTTP)
-- Client certificate handling (auto-fallback on cert-request)
-- `--no-sudo` mode for use with `--script-tun`
-- `--csd-wrapper` passthrough for CSD/hostscan support
-- `--reset-credentials` to clear saved keyring entries
-- Microsoft Authenticator number matching support
-- Office365 "Stay signed in?" auto-dismiss
-- Robust XML parsing (recovers from malformed responses)
+---
 
-## Requirements
+## ✨ Features
 
-- Python ≥ 3.10
-- [OpenConnect](https://www.infradead.org/openconnect/) installed and in PATH
-- Qt6 WebEngine (provided by PyQt6) — **only for GUI mode**
+| Feature | Description |
+|---------|-------------|
+| 🖥️ **GUI Mode** | Embedded Qt6 WebEngine browser with auto-fill |
+| 🤖 **Headless Mode** | No display needed — works on servers, containers, SSH |
+| 🔑 **Auto-Login** | Username, password, and TOTP auto-injection |
+| 🔒 **Keyring** | Credentials stored securely (with in-memory fallback) |
+| 📱 **MFA Support** | TOTP, Microsoft Authenticator number matching |
+| 🛡️ **Security** | XXE protection, no credential logging, safe config permissions |
+| 🌐 **Proxy** | SOCKS and HTTP proxy support |
+| 📜 **Certificates** | Client certificate handling with auto-fallback |
+| 🐳 **Docker-ready** | Headless mode for containerized deployments |
 
-## Installation
+## 📦 Installation
 
 ```bash
-# Headless mode (no GUI dependencies):
+# Headless (no GUI dependencies)
 pip install openconnect-saml
 
-# With GUI browser support:
-pip install openconnect-saml[gui]
+# With GUI browser
+pip install "openconnect-saml[gui]"
 
-# Or via uv:
-uv tool install openconnect-saml       # headless
-uv tool install openconnect-saml[gui]   # with browser
+# Arch Linux (AUR)
+yay -S openconnect-saml
 ```
 
-## Usage
+> **Requires:** Python ≥ 3.10 and [OpenConnect](https://www.infradead.org/openconnect/) in PATH
 
-### GUI Mode (default)
+## 🚀 Quick Start
 
 ```bash
-# Connect to a VPN server
+# GUI mode (default)
+openconnect-saml --server vpn.example.com --user user@domain.com
+
+# Headless mode (servers, containers, SSH)
+openconnect-saml --server vpn.example.com --user user@domain.com --headless
+```
+
+## 📖 Usage
+
+### GUI Mode
+
+```bash
 openconnect-saml --server vpn.example.com
-
-# With a specific user group
 openconnect-saml --server vpn.example.com/usergroup
-
-# Use AnyConnect profile
 openconnect-saml --profile /opt/cisco/anyconnect/profile
 ```
 
-### Headless Mode (no display required)
+### Headless Mode
 
-Perfect for servers, containers, CI/CD, and SSH sessions:
+No display server required — perfect for servers, CI/CD, and containers:
 
 ```bash
-# Automatic authentication (username/password/TOTP from keyring)
+# Auto-authenticate with saved credentials
 openconnect-saml --server vpn.example.com --headless --user user@example.com
 
-# Authentication only — output cookie for scripting
-openconnect-saml --server vpn.example.com --headless --user user@example.com --authenticate json
+# Output auth cookie for scripting
+openconnect-saml --server vpn.example.com --headless --authenticate json
 ```
 
-**How headless mode works:**
+**How it works:**
+1. **Auto**: HTTP requests + form parsing → submits credentials without a browser
+2. **Fallback**: If auto-auth fails (CAPTCHA, unsupported MFA) → prints URL + starts local callback server → authenticate in any browser
 
-1. **Automatic**: Uses HTTP requests + form parsing to submit credentials (username, password, TOTP) without a browser. Works with standard Azure AD / Microsoft Online flows.
-2. **Callback fallback**: If automatic auth fails (e.g., CAPTCHA, unsupported MFA), starts a local HTTP server and prints a URL. Open the URL in any browser (even on another machine), authenticate, and the callback captures the token.
+### Advanced Options
 
-### Docker Example
+```bash
+--headless              # No browser, terminal-only authentication
+--no-sudo               # Don't use sudo (for --script-tun)
+--ssl-legacy            # Enable legacy SSL renegotiation
+--csd-wrapper PATH      # CSD/hostscan wrapper script
+--timeout SECONDS       # HTTP timeout (default: 30)
+--window-size WxH       # Browser window size (default: 800x600)
+--on-connect CMD        # Run command after VPN connects
+--on-disconnect CMD     # Run command after VPN disconnects
+--reset-credentials     # Clear saved keyring entries
+--authenticate FORMAT   # Auth only, output cookie (json|shell)
+```
+
+### 🐳 Docker
 
 ```dockerfile
 FROM python:3.12-slim
-
-RUN pip install openconnect-saml
-RUN apt-get update && apt-get install -y openconnect && rm -rf /var/lib/apt/lists/*
-
-# Run headless — no GUI needed
+RUN pip install openconnect-saml && \
+    apt-get update && apt-get install -y openconnect && rm -rf /var/lib/apt/lists/*
 ENTRYPOINT ["openconnect-saml", "--headless"]
 ```
 
@@ -90,100 +114,90 @@ docker run -it --cap-add=NET_ADMIN --device=/dev/net/tun \
   vpn-client --server vpn.example.com --user user@example.com
 ```
 
-### Server Deployment
+## ⚙️ Configuration
 
-On a headless server (no X11/Wayland):
-
-```bash
-# Install without GUI deps
-pip install openconnect-saml
-
-# First run — will prompt for password & TOTP secret, saves to keyring
-openconnect-saml --server vpn.example.com --headless --user user@example.com
-
-# Subsequent runs use saved credentials
-openconnect-saml --server vpn.example.com --headless --user user@example.com
-```
-
-### More Options
-
-```bash
-# Without sudo (for --script-tun)
-openconnect-saml --server vpn.example.com --no-sudo -- --script-tun
-
-# With CSD hostscan wrapper
-openconnect-saml --server vpn.example.com --csd-wrapper /path/to/csd-wrapper.sh
-
-# Reset saved credentials
-openconnect-saml --user user@example.com --reset-credentials
-
-# SSL legacy mode (for older VPN appliances)
-openconnect-saml --server vpn.example.com --ssl-legacy
-
-# Custom timeout
-openconnect-saml --server vpn.example.com --timeout 60
-```
-
-## Configuration
-
-Config file: `$HOME/.config/openconnect-saml/config.toml`
+Config file: `~/.config/openconnect-saml/config.toml`
 
 ```toml
 [default_profile]
-address = "vpn.example.com"
+server = "vpn.example.com"
 user_group = ""
 name = "My VPN"
 
 [credentials]
 username = "user@example.com"
-
-# Optional: run a command on disconnect
-on_disconnect = ""
 ```
 
-### Auto-fill rules
+<details>
+<summary><strong>Auto-fill Rules</strong></summary>
 
-Custom auto-fill rules can be defined per URL pattern:
-
-```toml
-[auto_fill_rules]
-"https://*" = [
-    { selector = "input[type=email]", fill = "username" },
-    { selector = "input[name=passwd]", fill = "password" },
-    { selector = "input[id=idTxtBx_SAOTCC_OTC]", fill = "totp" },
-]
-```
-
-#### Office365 "Stay signed in?" page
-
-The default rules now auto-dismiss the "Stay signed in?" prompt. If you use custom `auto_fill_rules`, add these entries:
+Custom rules per URL pattern:
 
 ```toml
 [[auto_fill_rules."https://*"]]
-selector = "input[id=KmsiCheckboxField]"
-action = "click"
+selector = "input[type=email]"
+fill = "username"
 
 [[auto_fill_rules."https://*"]]
-selector = "input[id=idSIButton9]"
-action = "click"
+selector = "input[name=passwd]"
+fill = "password"
+
+[[auto_fill_rules."https://*"]]
+selector = "input[id=idTxtBx_SAOTCC_OTC]"
+fill = "totp"
 ```
 
-### TOTP / Password
+</details>
 
-Credentials are stored in the system keyring. On first use, you'll be prompted for your password and optional TOTP secret.
+<details>
+<summary><strong>TOTP Configuration</strong></summary>
 
-If keyring is unavailable (e.g., headless server), passwords are kept in memory for the session.
+For automated TOTP, add your secret to the config:
+
+```toml
+[credentials]
+username = "user@example.com"
+# TOTP secret is stored in keyring on first use
+# Or set via: openconnect-saml --user user@example.com (prompts for secret)
+```
 
 To clear stored credentials:
-
 ```bash
 openconnect-saml --user user@example.com --reset-credentials
 ```
 
-## Credits
+</details>
 
-Based on [vlaci/openconnect-sso](https://github.com/vlaci/openconnect-sso) by László Vaskó, with improvements from [kowyo/openconnect-lite](https://github.com/kowyo/openconnect-lite).
+## 🔄 Migrating from openconnect-sso
 
-## License
+```bash
+# Replace openconnect-sso with openconnect-saml
+pip uninstall openconnect-sso
+pip install openconnect-saml
+
+# Rename config directory
+mv ~/.config/openconnect-sso ~/.config/openconnect-saml
+
+# Same CLI, new name
+openconnect-saml --server vpn.example.com
+```
+
+## 🛠️ Development
+
+```bash
+git clone https://github.com/mschabhuettl/openconnect-saml
+cd openconnect-saml
+pip install -e ".[dev]"
+pytest -v
+ruff check .
+```
+
+## 🙏 Credits
+
+- [László Vaskó (vlaci)](https://github.com/vlaci) — original [openconnect-sso](https://github.com/vlaci/openconnect-sso)
+- [Kowyo](https://github.com/kowyo) — [openconnect-lite](https://github.com/kowyo/openconnect-lite) modernization
+- Community contributors for issues, PRs, and testing
+
+## 📄 License
 
 [GPL-3.0](LICENSE)
