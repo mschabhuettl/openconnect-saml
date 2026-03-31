@@ -11,6 +11,8 @@ from openconnect_saml.saml_authenticator import authenticate_in_browser
 
 # Sentinel for headless mode
 HEADLESS_MODE = "headless"
+# Sentinel for chrome browser mode
+CHROME_MODE = "chrome"
 
 logger = structlog.get_logger()
 
@@ -113,6 +115,27 @@ class Authenticator:
                 timeout=self.timeout,
             )
             return await headless.authenticate(auth_request_response)
+
+        if display_mode == CHROME_MODE:
+            from openconnect_saml.browser.chrome import ChromeBrowser
+
+            async with ChromeBrowser(
+                headless=False,
+                proxy=self.proxy,
+                timeout=self.timeout * 1000,
+            ) as browser:
+                cookies = await browser.authenticate_at(
+                    url=str(auth_request_response.login_url),
+                    credentials=self.credentials,
+                    final_url=str(auth_request_response.login_final_url),
+                    token_cookie_name=str(auth_request_response.token_cookie_name),
+                )
+                token_name = str(auth_request_response.token_cookie_name)
+                if token_name in cookies:
+                    return cookies[token_name]
+                raise AuthenticationError(
+                    f"SSO token cookie '{token_name}' not found after Chrome authentication"
+                )
 
         return await authenticate_in_browser(
             self.proxy,

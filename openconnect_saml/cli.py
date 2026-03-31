@@ -80,6 +80,15 @@ def create_argparser():
     )
 
     parser.add_argument(
+        "--browser",
+        help="Browser backend to use for SAML authentication. "
+        "'qt' uses PyQt6 WebEngine (default), 'chrome' uses Playwright/Chromium, "
+        "'headless' is equivalent to --headless. Choices: {%(choices)s}",
+        choices=["qt", "chrome", "headless"],
+        default=None,
+    )
+
+    parser.add_argument(
         "--browser-display-mode",
         help="Controls how the browser window is displayed. 'hidden' mode only works with saved credentials. Choices: {%(choices)s}",
         choices=["shown", "hidden"],
@@ -134,6 +143,21 @@ def create_argparser():
         help="Delete saved credentials from keyring and exit",
         action="store_true",
         default=False,
+    )
+
+    reconnect_group = parser.add_argument_group("Reconnect options")
+    reconnect_group.add_argument(
+        "--reconnect",
+        help="Automatically reconnect when the VPN connection drops",
+        action="store_true",
+        default=False,
+    )
+    reconnect_group.add_argument(
+        "--max-retries",
+        dest="max_retries",
+        type=int,
+        default=None,
+        help="Maximum number of reconnection attempts (default: unlimited)",
     )
 
     connection_group = parser.add_argument_group("Connection options")
@@ -205,9 +229,71 @@ class LogLevel(enum.IntEnum):
         return cls.__members__.values()
 
 
+def create_service_argparser():
+    """Create a separate parser for the 'service' subcommand."""
+    parser = argparse.ArgumentParser(
+        prog="openconnect-saml service",
+        description="Manage systemd service for persistent VPN connections",
+    )
+    subparsers = parser.add_subparsers(dest="service_action", required=True)
+
+    # install
+    install_p = subparsers.add_parser("install", help="Install systemd unit")
+    install_p.add_argument("-s", "--server", required=True, help="VPN server address")
+    install_p.add_argument("-u", "--user", help="Username for authentication")
+    install_p.add_argument(
+        "--browser",
+        choices=["headless", "chrome", "qt"],
+        default="headless",
+        help="Browser backend for the service (default: headless)",
+    )
+    install_p.add_argument(
+        "--max-retries",
+        type=int,
+        default=None,
+        help="Max reconnection retries (default: unlimited)",
+    )
+
+    # uninstall
+    uninstall_p = subparsers.add_parser("uninstall", help="Remove systemd unit")
+    uninstall_p.add_argument("-s", "--server", required=True, help="VPN server address")
+
+    # start
+    start_p = subparsers.add_parser("start", help="Start VPN service")
+    start_p.add_argument("-s", "--server", required=True, help="VPN server address")
+
+    # stop
+    stop_p = subparsers.add_parser("stop", help="Stop VPN service")
+    stop_p.add_argument("-s", "--server", required=True, help="VPN server address")
+
+    # status
+    status_p = subparsers.add_parser("status", help="Show service status")
+    status_p.add_argument("-s", "--server", default=None, help="VPN server address (optional)")
+
+    # logs
+    logs_p = subparsers.add_parser("logs", help="Show service logs")
+    logs_p.add_argument("-s", "--server", default=None, help="VPN server address (optional)")
+    logs_p.add_argument("-f", "--follow", action="store_true", help="Follow log output")
+
+    return parser
+
+
 def main():
+    # Check for 'service' subcommand before main argparse
+    if len(sys.argv) > 1 and sys.argv[1] == "service":
+        from openconnect_saml.service import handle_service_command
+
+        service_parser = create_service_argparser()
+        args = service_parser.parse_args(sys.argv[2:])
+        return handle_service_command(args)
+
     parser = create_argparser()
     args = parser.parse_args()
+
+    # --browser flag overrides --headless
+    if args.browser and args.browser == "headless":
+        args.headless = True
+    # chrome and qt are handled in app.py
 
     if (args.profile_path or args.use_profile_selector) and (args.server or args.usergroup):
         parser.error("--profile/--profile-selector and --server/--usergroup are mutually exclusive")

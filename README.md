@@ -25,11 +25,15 @@
 | Feature | Description |
 |---------|-------------|
 | 🖥️ **GUI Mode** | Embedded Qt6 WebEngine browser with auto-fill |
+| 🌐 **Chrome Browser** | Playwright-based Chromium backend — headless or visible |
 | 🤖 **Headless Mode** | No display needed — works on servers, containers, SSH |
 | 🔑 **Auto-Login** | Username, password, and TOTP auto-injection |
 | 🔒 **Keyring** | Credentials stored securely (with in-memory fallback) |
 | 📱 **MFA Support** | TOTP, Microsoft Authenticator number matching |
+| 🔐 **FIDO2/YubiKey** | Hardware security key support for WebAuthn challenges |
 | 🛡️ **Security** | XXE protection, no credential logging, safe config permissions |
+| 🔄 **Auto-Reconnect** | Automatic re-authentication and reconnection on VPN drops |
+| ⚙️ **Systemd Service** | Install as a persistent system service with one command |
 | 🌐 **Proxy** | SOCKS and HTTP proxy support |
 | 📜 **Certificates** | Client certificate handling with auto-fallback |
 | 🐳 **Docker-ready** | Headless mode for containerized deployments |
@@ -40,8 +44,15 @@
 # Headless (no GUI dependencies)
 pip install openconnect-saml
 
-# With GUI browser
+# With GUI browser (Qt6 WebEngine)
 pip install "openconnect-saml[gui]"
+
+# With Chrome/Chromium browser (Playwright)
+pip install "openconnect-saml[chrome]"
+playwright install chromium
+
+# With FIDO2/YubiKey support
+pip install "openconnect-saml[fido2]"
 
 # Arch Linux (AUR)
 yay -S openconnect-saml
@@ -85,10 +96,67 @@ openconnect-saml --server vpn.example.com --headless --authenticate json
 1. **Auto**: HTTP requests + form parsing → submits credentials without a browser
 2. **Fallback**: If auto-auth fails (CAPTCHA, unsupported MFA) → prints URL + starts local callback server → authenticate in any browser
 
+### Chrome/Chromium Browser
+
+Use Playwright-based Chromium instead of Qt WebEngine:
+
+```bash
+# Visible Chrome window
+openconnect-saml --server vpn.example.com --browser chrome
+
+# Headless Chrome (no display needed)
+openconnect-saml --server vpn.example.com --browser headless
+```
+
+### Auto-Reconnect
+
+Keep the VPN alive — automatically re-authenticates and reconnects on drops:
+
+```bash
+# Unlimited retries with backoff (30s, 60s, 120s, 300s)
+openconnect-saml --server vpn.example.com --headless --reconnect
+
+# Limit to 5 reconnection attempts
+openconnect-saml --server vpn.example.com --headless --reconnect --max-retries 5
+```
+
+### Systemd Service
+
+Install as a persistent system service:
+
+```bash
+# Install and enable
+sudo openconnect-saml service install --server vpn.example.com --user user@domain.com
+
+# Manage
+sudo openconnect-saml service start --server vpn.example.com
+sudo openconnect-saml service stop --server vpn.example.com
+openconnect-saml service status
+openconnect-saml service logs --server vpn.example.com
+
+# Remove
+sudo openconnect-saml service uninstall --server vpn.example.com
+```
+
+### FIDO2/YubiKey
+
+Hardware security key support for WebAuthn challenges during SAML authentication:
+
+```bash
+# FIDO2 is detected automatically during auth flows
+# When a WebAuthn challenge is encountered:
+# → Terminal prompt: "Touch your security key..."
+# → PIN prompt if required
+pip install "openconnect-saml[fido2]"
+```
+
 ### Advanced Options
 
 ```bash
 --headless              # No browser, terminal-only authentication
+--browser BACKEND       # Browser backend: qt, chrome, headless
+--reconnect             # Auto-reconnect on VPN drops
+--max-retries N         # Max reconnection attempts (default: unlimited)
 --no-sudo               # Don't use sudo (for --script-tun)
 --ssl-legacy            # Enable legacy SSL renegotiation
 --csd-wrapper PATH      # CSD/hostscan wrapper script

@@ -217,3 +217,7 @@ class Config(ConfigNode):
 class DisplayMode(enum.Enum):
     HIDDEN = 0
     SHOWN = 1
+
+
+# Supported auto-fill action types (including FIDO2)
+AUTOFILL_ACTIONS = ("click", "stop", "fido2")
