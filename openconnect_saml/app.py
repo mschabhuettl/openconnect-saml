@@ -15,7 +15,12 @@ from prompt_toolkit.shortcuts import radiolist_dialog
 from requests.exceptions import HTTPError
 
 from openconnect_saml import config
-from openconnect_saml.authenticator import HEADLESS_MODE, Authenticator, AuthResponseError
+from openconnect_saml.authenticator import (
+    CHROME_MODE,
+    HEADLESS_MODE,
+    Authenticator,
+    AuthResponseError,
+)
 from openconnect_saml.browser import Terminated
 from openconnect_saml.config import Credentials
 from openconnect_saml.profile import get_profiles
@@ -64,6 +69,14 @@ def run(args):
             print("\n".join(f"{k.upper()}={shlex.quote(v)}" for k, v in details.items()))
         return 0
 
+    reconnect = getattr(args, "reconnect", False)
+    max_retries = getattr(args, "max_retries", None)
+
+    if reconnect:
+        return _run_with_reconnect(
+            args, cfg, auth_response, selected_profile, max_retries=max_retries
+        )
+
     try:
         rc = run_openconnect(
             auth_response,
@@ -81,6 +94,85 @@ def run(args):
         return 0
     finally:
         handle_disconnect(cfg.on_disconnect)
+
+
+# Backoff schedule for reconnection (seconds)
+RECONNECT_BACKOFF = [30, 60, 120, 300]
+
+
+def _run_with_reconnect(args, cfg, auth_response, selected_profile, max_retries=None):
+    """Run openconnect with automatic reconnection on failure.
+
+    Re-authenticates and reconnects when the VPN process exits unexpectedly.
+    Uses exponential backoff: 30s, 60s, 120s, then 300s.
+
+    Parameters
+    ----------
+    max_retries : int or None
+        Maximum reconnection attempts. None means unlimited.
+    """
+    import time
+
+    attempt = 0
+    while True:
+        try:
+            rc = run_openconnect(
+                auth_response,
+                selected_profile,
+                args.proxy,
+                args.ac_version,
+                args.openconnect_args,
+                no_sudo=getattr(args, "no_sudo", False),
+                csd_wrapper=getattr(args, "csd_wrapper", None),
+                on_connect=cfg.on_connect,
+            )
+        except KeyboardInterrupt:
+            logger.warn("CTRL-C pressed, stopping reconnect loop")
+            handle_disconnect(cfg.on_disconnect)
+            return 0
+
+        if rc == 0:
+            # Clean exit
+            handle_disconnect(cfg.on_disconnect)
+            return 0
+
+        attempt += 1
+        if max_retries is not None and attempt >= max_retries:
+            logger.error(
+                "Max reconnection retries reached",
+                attempts=attempt,
+                max_retries=max_retries,
+            )
+            handle_disconnect(cfg.on_disconnect)
+            return rc
+
+        backoff_idx = min(attempt - 1, len(RECONNECT_BACKOFF) - 1)
+        delay = RECONNECT_BACKOFF[backoff_idx]
+        logger.warn(
+            "VPN connection dropped, reconnecting",
+            attempt=attempt,
+            delay=delay,
+            exit_code=rc,
+        )
+
+        try:
+            time.sleep(delay)
+        except KeyboardInterrupt:
+            logger.warn("CTRL-C pressed during backoff, exiting")
+            handle_disconnect(cfg.on_disconnect)
+            return 0
+
+        # Re-authenticate
+        try:
+            auth_response, selected_profile = asyncio.run(_run(args, cfg))
+        except KeyboardInterrupt:
+            logger.warn("CTRL-C pressed during re-authentication, exiting")
+            handle_disconnect(cfg.on_disconnect)
+            return 0
+        except Exception as exc:
+            logger.error("Re-authentication failed", error=str(exc))
+            # Continue with backoff
+            continue
 
 
 def configure_logger(logger, level):
@@ -149,7 +241,10 @@ async def _run(args, cfg):
         selected_profile.address, selected_profile.user_group, selected_profile.name
     )
 
-    if getattr(args, "headless", False):
+    browser_backend = getattr(args, "browser", None)
+    if browser_backend == "chrome":
+        display_mode = CHROME_MODE
+    elif getattr(args, "headless", False) or browser_backend == "headless":
         display_mode = HEADLESS_MODE
     else:
         display_mode = config.DisplayMode[args.browser_display_mode.upper()]
