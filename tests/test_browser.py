@@ -3,8 +3,22 @@ import sys
 import attr
 import pytest
 
-from openconnect_saml.browser import Browser
+try:
+    from openconnect_saml.browser import Browser
+
+    HAS_GUI = True
+except (ImportError, OSError):
+    HAS_GUI = False
+    Browser = None  # type: ignore
+
+import os
+
 from openconnect_saml.config import DisplayMode
+
+pytestmark = pytest.mark.skipif(
+    not HAS_GUI or os.environ.get("CI") == "true",
+    reason="PyQt6/GUI not available or running in CI",
+)
 
 
 @pytest.mark.asyncio

@@ -33,8 +33,6 @@ dependencies = [
     "lxml",
     "prompt-toolkit",
     "pyotp",
-    "pyqt6",
-    "pyqt6-webengine",
     "pysocks",
     "pyxdg",
     "requests",
@@ -43,6 +41,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+gui = [
+    "pyqt6",
+    "pyqt6-webengine",
+]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=1.0",

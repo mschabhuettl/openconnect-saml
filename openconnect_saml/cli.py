@@ -71,6 +71,15 @@ def create_argparser():
     )
 
     parser.add_argument(
+        "--headless",
+        help="Run without a browser (no GUI required). Uses automatic form-based "
+        "authentication or a local callback server for manual browser auth. "
+        "Ideal for servers, containers, and SSH sessions.",
+        action="store_true",
+        default=False,
+    )
+
+    parser.add_argument(
         "--browser-display-mode",
         help="Controls how the browser window is displayed. 'hidden' mode only works with saved credentials. Choices: {%(choices)s}",
         choices=["shown", "hidden"],
