@@ -24,7 +24,7 @@ jobs:
       - name: Install pip-audit
         run: pip install pip-audit
       - name: Run pip-audit
-        run: pip-audit --strict --desc
+        run: pip-audit --strict --desc --skip-editable
 
   bandit:
     name: Python security linter

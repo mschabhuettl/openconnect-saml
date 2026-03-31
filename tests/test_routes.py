@@ -105,12 +105,13 @@ class TestRunOpenconnectRoutes:
         )
 
         cmd = mock_run.call_args[0][0]
-        # Check routes are in the command
-        assert "--route" in cmd
-        assert "10.0.0.0/8" in cmd
-        assert "172.16.0.0/12" in cmd
-        assert "--no-route" in cmd
-        assert "192.168.0.0/16" in cmd
+        # Check routes are in the command (may be separate args or joined string on Windows)
+        cmd_str = " ".join(cmd) if isinstance(cmd, list) else str(cmd)
+        assert "--route" in cmd_str
+        assert "10.0.0.0/8" in cmd_str
+        assert "172.16.0.0/12" in cmd_str
+        assert "--no-route" in cmd_str
+        assert "192.168.0.0/16" in cmd_str
 
     @patch("openconnect_saml.app.shutil.which", return_value="/usr/bin/sudo")
     @patch("openconnect_saml.app.subprocess.run")
