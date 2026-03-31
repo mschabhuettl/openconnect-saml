@@ -6,6 +6,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.5.0] - 2026-03-31
+
+### Added
+- **Multi-profile support** — save and switch between named VPN configurations
+  - `openconnect-saml connect <profile>` to connect by profile name
+  - `openconnect-saml profiles` to list, add, and remove profiles
+  - TOML config: `[profiles.<name>]` sections with server, credentials, and settings
+  - Fully backwards-compatible: no profile argument uses `default_profile` as before
+- **Connection status TUI** — live VPN connection status display
+  - `openconnect-saml status` shows profile, server, user, uptime, IP, TX/RX
+  - `--watch` flag for live-updating display (refreshes every 2s)
+  - Optional `rich` dependency: `pip install openconnect-saml[tui]`
+  - Falls back to plain text output when `rich` is not installed
+- **Shell completion** — tab completion for all shells
+  - `openconnect-saml completion bash/zsh/fish` generates scripts
+  - `openconnect-saml completion install` auto-installs to correct paths
+  - Completes subcommands, flags, and profile names dynamically
+- New CLI architecture with subcommands (`connect`, `profiles`, `status`, `completion`, `service`)
+- 59 new tests (273 total)
+
 ## [0.4.0] - 2026-03-31
 
 ### Added

@@ -247,21 +247,21 @@ class TestTwoFAuthProvider:
 
 class TestCLIFlags:
     def test_totp_source_flag(self):
-        from openconnect_saml.cli import create_argparser
+        from openconnect_saml.cli import create_legacy_argparser as create_argparser
 
         parser = create_argparser()
         args = parser.parse_args(["-s", "vpn.example.com", "--totp-source", "2fauth"])
         assert args.totp_source == "2fauth"
 
     def test_totp_source_default(self):
-        from openconnect_saml.cli import create_argparser
+        from openconnect_saml.cli import create_legacy_argparser as create_argparser
 
         parser = create_argparser()
         args = parser.parse_args(["-s", "vpn.example.com"])
         assert args.totp_source is None
 
     def test_2fauth_url_flag(self):
-        from openconnect_saml.cli import create_argparser
+        from openconnect_saml.cli import create_legacy_argparser as create_argparser
 
         parser = create_argparser()
         args = parser.parse_args(
@@ -270,21 +270,21 @@ class TestCLIFlags:
         assert args.twofauth_url == "https://2fa.example.com"
 
     def test_2fauth_token_flag(self):
-        from openconnect_saml.cli import create_argparser
+        from openconnect_saml.cli import create_legacy_argparser as create_argparser
 
         parser = create_argparser()
         args = parser.parse_args(["-s", "vpn.example.com", "--2fauth-token", "my-secret-token"])
         assert args.twofauth_token == "my-secret-token"
 
     def test_2fauth_account_id_flag(self):
-        from openconnect_saml.cli import create_argparser
+        from openconnect_saml.cli import create_legacy_argparser as create_argparser
 
         parser = create_argparser()
         args = parser.parse_args(["-s", "vpn.example.com", "--2fauth-account-id", "42"])
         assert args.twofauth_account_id == 42
 
     def test_all_2fauth_flags_together(self):
-        from openconnect_saml.cli import create_argparser
+        from openconnect_saml.cli import create_legacy_argparser as create_argparser
 
         parser = create_argparser()
         args = parser.parse_args(

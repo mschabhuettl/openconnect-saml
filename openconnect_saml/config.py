@@ -226,10 +226,60 @@ def _convert_twofauth(val):
 
 
 @attr.s
+class ProfileConfig(ConfigNode):
+    """A named VPN profile with server, credentials, and optional settings."""
+
+    server = attr.ib(converter=str)
+    user_group = attr.ib(converter=str, default="")
+    name = attr.ib(converter=str, default="")
+    credentials = attr.ib(default=None, converter=Credentials.from_dict)
+    twofauth = attr.ib(default=None, converter=_convert_twofauth)
+
+    @classmethod
+    def from_dict(cls, d):
+        if d is None:
+            return None
+        d = dict(d)
+        if "2fauth" in d:
+            d["twofauth"] = d.pop("2fauth")
+        return cls(**d)
+
+    def as_dict(self):
+        d = attr.asdict(self, filter=lambda a, v: a.init)
+        if "twofauth" in d:
+            val = d.pop("twofauth")
+            if val is not None:
+                d["2fauth"] = val
+        return d
+
+    def to_host_profile(self):
+        """Convert to a HostProfile for authentication."""
+        return HostProfile(self.server, self.user_group, self.name)
+
+
+def _convert_profiles(val):
+    if val is None:
+        return {}
+    if isinstance(val, dict):
+        result = {}
+        for k, v in val.items():
+            if isinstance(v, ProfileConfig):
+                result[k] = v
+            elif isinstance(v, dict):
+                result[k] = ProfileConfig.from_dict(v)
+            else:
+                result[k] = v
+        return result
+    return val
+
+
+@attr.s
 class Config(ConfigNode):
     default_profile = attr.ib(default=None, converter=HostProfile.from_dict)
     credentials = attr.ib(default=None, converter=Credentials.from_dict)
     twofauth = attr.ib(default=None, converter=_convert_twofauth)
+    profiles = attr.ib(factory=dict, converter=_convert_profiles)
+    active_profile = attr.ib(default=None)
 
     @classmethod
     def from_dict(cls, d):
@@ -248,7 +298,37 @@ class Config(ConfigNode):
             val = d.pop("twofauth")
             if val is not None:
                 d["2fauth"] = val
+        # Serialize profiles properly
+        if "profiles" in d and d["profiles"]:
+            serialized = {}
+            for name, prof in d["profiles"].items():
+                if isinstance(prof, dict):
+                    serialized[name] = prof
+                else:
+                    serialized[name] = prof
+            d["profiles"] = serialized
         return d
+
+    def get_profile(self, name):
+        """Get a named profile, or None."""
+        return self.profiles.get(name)
+
+    def add_profile(self, name, profile):
+        """Add or update a named profile."""
+        if isinstance(profile, dict):
+            profile = ProfileConfig.from_dict(profile)
+        self.profiles[name] = profile
+
+    def remove_profile(self, name):
+        """Remove a named profile. Returns True if it existed."""
+        if name in self.profiles:
+            del self.profiles[name]
+            return True
+        return False
+
+    def list_profiles(self):
+        """Return list of (name, ProfileConfig) tuples."""
+        return list(self.profiles.items())
 
     auto_fill_rules = attr.ib(
         factory=get_default_auto_fill_rules,

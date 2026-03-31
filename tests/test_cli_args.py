@@ -2,7 +2,7 @@
 
 import pytest
 
-from openconnect_saml.cli import create_argparser
+from openconnect_saml.cli import create_legacy_argparser as create_argparser
 
 
 @pytest.fixture
