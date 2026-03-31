@@ -145,6 +145,34 @@ def create_argparser():
         default=False,
     )
 
+    totp_group = parser.add_argument_group("TOTP provider options")
+    totp_group.add_argument(
+        "--totp-source",
+        dest="totp_source",
+        choices=["local", "2fauth"],
+        default=None,
+        help="TOTP provider: 'local' (pyotp/keyring, default) or '2fauth' (remote 2FAuth API)",
+    )
+    totp_group.add_argument(
+        "--2fauth-url",
+        dest="twofauth_url",
+        default=None,
+        help="2FAuth instance URL (e.g. https://2fauth.example.com)",
+    )
+    totp_group.add_argument(
+        "--2fauth-token",
+        dest="twofauth_token",
+        default=None,
+        help="2FAuth Personal Access Token",
+    )
+    totp_group.add_argument(
+        "--2fauth-account-id",
+        dest="twofauth_account_id",
+        type=int,
+        default=None,
+        help="2FAuth account ID for the VPN TOTP entry",
+    )
+
     reconnect_group = parser.add_argument_group("Reconnect options")
     reconnect_group.add_argument(
         "--reconnect",

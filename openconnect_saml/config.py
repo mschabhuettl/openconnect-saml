@@ -105,10 +105,21 @@ def get_default_auto_fill_rules():
 
 
 @attr.s
+class TwoFAuthConfig(ConfigNode):
+    """Configuration for a remote 2FAuth TOTP provider."""
+
+    url = attr.ib(default="")
+    token = attr.ib(default="", repr=False)
+    account_id = attr.ib(default=0, converter=int)
+
+
+@attr.s
 class Credentials(ConfigNode):
     username = attr.ib()
+    totp_source = attr.ib(default="local")  # "local" or "2fauth"
     _totp_secret = attr.ib(default=None, init=False, repr=False)
     _password = attr.ib(default=None, init=False, repr=False)
+    _totp_provider = attr.ib(default=None, init=False, repr=False)
 
     @property
     def password(self):
@@ -134,6 +145,11 @@ class Credentials(ConfigNode):
 
     @property
     def totp(self):
+        # If a pluggable provider is set, delegate to it
+        if self._totp_provider is not None:
+            return self._totp_provider.get_totp()
+
+        # Original local behaviour
         if self._totp_secret:
             try:
                 return pyotp.TOTP(self._totp_secret).now()
@@ -183,6 +199,10 @@ class Credentials(ConfigNode):
         except keyring.errors.KeyringError:
             logger.info("Cannot delete saved totp secret from keyring.")
 
+    def set_totp_provider(self, provider):
+        """Attach a custom :class:`TotpProvider` (e.g. 2FAuth)."""
+        self._totp_provider = provider
+
     def save(self):
         if self._password:
             try:
@@ -197,10 +217,39 @@ class Credentials(ConfigNode):
                 logger.info("Cannot save totp secret to keyring.")
 
 
+def _convert_twofauth(val):
+    if val is None:
+        return None
+    if isinstance(val, TwoFAuthConfig):
+        return val
+    return TwoFAuthConfig.from_dict(val)
+
+
 @attr.s
 class Config(ConfigNode):
     default_profile = attr.ib(default=None, converter=HostProfile.from_dict)
     credentials = attr.ib(default=None, converter=Credentials.from_dict)
+    twofauth = attr.ib(default=None, converter=_convert_twofauth)
+
+    @classmethod
+    def from_dict(cls, d):
+        if d is None:
+            return None
+        d = dict(d)
+        # TOML section [2fauth] → Python field twofauth
+        if "2fauth" in d:
+            d["twofauth"] = d.pop("2fauth")
+        return cls(**d)
+
+    def as_dict(self):
+        d = attr.asdict(self, filter=lambda a, v: a.init)
+        # Python field twofauth → TOML section [2fauth]
+        if "twofauth" in d:
+            val = d.pop("twofauth")
+            if val is not None:
+                d["2fauth"] = val
+        return d
+
     auto_fill_rules = attr.ib(
         factory=get_default_auto_fill_rules,
         converter=lambda rules: {
