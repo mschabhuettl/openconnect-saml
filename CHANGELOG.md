@@ -6,6 +6,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.4.0] - 2026-03-31
+
+### Added
+- **2FAuth TOTP integration** — fetch OTP codes from a [2FAuth](https://docs.2fauth.app/) instance via API
+- Config: `totp_source = "2fauth"` in `[credentials]`, new `[2fauth]` section with `url`, `token`, `account_id`
+- CLI: `--totp-source`, `--2fauth-url`, `--2fauth-token`, `--2fauth-account-id`
+- Pluggable `TotpProvider` abstraction (`LocalTotpProvider`, `TwoFAuthProvider`)
+- HTTPS enforcement warning for 2FAuth URLs
+- Token never logged — only redacted references
+
 ## [0.3.0] - 2026-03-31
 
 ### Added

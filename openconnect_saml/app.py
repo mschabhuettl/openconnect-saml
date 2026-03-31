@@ -22,8 +22,9 @@ from openconnect_saml.authenticator import (
     AuthResponseError,
 )
 from openconnect_saml.browser import Terminated
-from openconnect_saml.config import Credentials
+from openconnect_saml.config import Credentials, TwoFAuthConfig
 from openconnect_saml.profile import get_profiles
+from openconnect_saml.totp_providers import TwoFAuthProvider
 
 logger = structlog.get_logger()
 
@@ -216,7 +217,47 @@ async def _run(args, cfg):
         credentials.password = getpass.getpass(prompt=f"Password ({args.user}): ")
         cfg.credentials = credentials
 
-    if credentials and not credentials.totp:
+    # Determine TOTP source: CLI > config > default ("local")
+    totp_source = (
+        getattr(args, "totp_source", None) or credentials.totp_source if credentials else "local"
+    )
+
+    if credentials and totp_source == "2fauth":
+        # Build 2FAuth config from CLI flags or config file
+        twofauth_url = getattr(args, "twofauth_url", None)
+        twofauth_token = getattr(args, "twofauth_token", None)
+        twofauth_account_id = getattr(args, "twofauth_account_id", None)
+
+        if cfg.twofauth:
+            twofauth_url = twofauth_url or cfg.twofauth.url
+            twofauth_token = twofauth_token or cfg.twofauth.token
+            twofauth_account_id = (
+                twofauth_account_id if twofauth_account_id is not None else cfg.twofauth.account_id
+            )
+
+        if not all([twofauth_url, twofauth_token, twofauth_account_id]):
+            logger.error(
+                "2FAuth TOTP source requires --2fauth-url, --2fauth-token, "
+                "and --2fauth-account-id (or [2fauth] config section)"
+            )
+            raise ValueError("Missing 2FAuth configuration", 21)
+
+        credentials.totp_source = "2fauth"
+        credentials.set_totp_provider(
+            TwoFAuthProvider(
+                url=twofauth_url,
+                token=twofauth_token,
+                account_id=twofauth_account_id,
+            )
+        )
+        # Persist 2FAuth config
+        cfg.twofauth = TwoFAuthConfig(
+            url=twofauth_url,
+            token=twofauth_token,
+            account_id=twofauth_account_id,
+        )
+        logger.info("Using 2FAuth TOTP provider")
+    elif credentials and not credentials.totp:
         credentials.totp = getpass.getpass(
             prompt=f"TOTP secret (leave blank if not required) ({args.user}): "
         )

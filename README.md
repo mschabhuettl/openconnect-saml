@@ -28,6 +28,7 @@
 | 🌐 **Chrome Browser** | Playwright-based Chromium backend — headless or visible |
 | 🤖 **Headless Mode** | No display needed — works on servers, containers, SSH |
 | 🔑 **Auto-Login** | Username, password, and TOTP auto-injection |
+| 🌍 **2FAuth** | Fetch TOTP from a remote [2FAuth](https://docs.2fauth.app/) instance |
 | 🔒 **Keyring** | Credentials stored securely (with in-memory fallback) |
 | 📱 **MFA Support** | TOTP, Microsoft Authenticator number matching |
 | 🔐 **FIDO2/YubiKey** | Hardware security key support for WebAuthn challenges |
@@ -150,11 +151,49 @@ Hardware security key support for WebAuthn challenges during SAML authentication
 pip install "openconnect-saml[fido2]"
 ```
 
+### 2FAuth TOTP Provider
+
+Fetch TOTP codes from a [2FAuth](https://docs.2fauth.app/) instance instead of storing secrets locally:
+
+```bash
+# Via CLI flags
+openconnect-saml --server vpn.example.com --headless --user user@domain.com \
+  --totp-source 2fauth \
+  --2fauth-url https://2fauth.example.com \
+  --2fauth-token YOUR_PERSONAL_ACCESS_TOKEN \
+  --2fauth-account-id 42
+
+# Or via config file (~/.config/openconnect-saml/config.toml)
+```
+
+```toml
+[credentials]
+username = "user@example.com"
+totp_source = "2fauth"
+
+[2fauth]
+url = "https://2fauth.example.com"
+token = "eyJ0eXAiOiJKV1QiLC..."
+account_id = 42
+```
+
+**Setup:**
+1. Install [2FAuth](https://docs.2fauth.app/) and add your VPN TOTP account
+2. Create a Personal Access Token in 2FAuth (Settings → OAuth → Personal Access Tokens)
+3. Note the account ID (visible in the URL when editing the account, or via API)
+4. Configure openconnect-saml with `--totp-source 2fauth` or `totp_source = "2fauth"` in config
+
+> ⚠️ HTTPS is strongly recommended for the 2FAuth URL. HTTP connections will trigger a warning.
+
 ### Advanced Options
 
 ```bash
 --headless              # No browser, terminal-only authentication
 --browser BACKEND       # Browser backend: qt, chrome, headless
+--totp-source SOURCE    # TOTP provider: local (default) or 2fauth
+--2fauth-url URL        # 2FAuth instance URL
+--2fauth-token TOKEN    # 2FAuth Personal Access Token
+--2fauth-account-id ID  # 2FAuth account ID for VPN TOTP
 --reconnect             # Auto-reconnect on VPN drops
 --max-retries N         # Max reconnection attempts (default: unlimited)
 --no-sudo               # Don't use sudo (for --script-tun)
