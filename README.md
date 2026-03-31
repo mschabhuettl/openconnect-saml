@@ -12,6 +12,7 @@
   <a href="https://github.com/mschabhuettl/openconnect-saml/actions"><img src="https://img.shields.io/github/actions/workflow/status/mschabhuettl/openconnect-saml/test.yml?label=CI" alt="CI"></a>
   <a href="https://github.com/mschabhuettl/openconnect-saml/blob/main/LICENSE"><img src="https://img.shields.io/github/license/mschabhuettl/openconnect-saml?color=green" alt="License"></a>
   <a href="https://pypi.org/project/openconnect-saml/"><img src="https://img.shields.io/pypi/pyversions/openconnect-saml" alt="Python"></a>
+  <a href="https://pypi.org/project/openconnect-saml/"><img src="https://img.shields.io/pypi/dm/openconnect-saml?color=orange&label=Downloads" alt="Downloads"></a>
 </p>
 
 <p align="center">
@@ -61,8 +62,13 @@ pip install "openconnect-saml[fido2]"
 # With connection status TUI (rich)
 pip install "openconnect-saml[tui]"
 
+# All extras (GUI + Chrome + FIDO2 + TUI)
+pip install "openconnect-saml[gui,chrome,fido2,tui]"
+
 # Arch Linux (AUR)
 yay -S openconnect-saml
+# or
+paru -S openconnect-saml
 ```
 
 > **Requires:** Python ≥ 3.10 and [OpenConnect](https://www.infradead.org/openconnect/) in PATH
@@ -387,6 +393,19 @@ pip install -e ".[dev]"
 pytest -v
 ruff check .
 ```
+
+## 📎 Links
+
+| Resource | URL |
+|----------|-----|
+| **GitHub** | [mschabhuettl/openconnect-saml](https://github.com/mschabhuettl/openconnect-saml) |
+| **PyPI** | [pypi.org/project/openconnect-saml](https://pypi.org/project/openconnect-saml/) |
+| **AUR** | [aur.archlinux.org/packages/openconnect-saml](https://aur.archlinux.org/packages/openconnect-saml) |
+| **Releases** | [GitHub Releases](https://github.com/mschabhuettl/openconnect-saml/releases) |
+| **Issues** | [Bug Tracker](https://github.com/mschabhuettl/openconnect-saml/issues) |
+| **Changelog** | [CHANGELOG.md](https://github.com/mschabhuettl/openconnect-saml/blob/main/CHANGELOG.md) |
+| **License** | [GPL-3.0](https://github.com/mschabhuettl/openconnect-saml/blob/main/LICENSE) |
+| **Original** | [vlaci/openconnect-sso](https://github.com/vlaci/openconnect-sso) |
 
 ## 🙏 Credits
 
