@@ -15,7 +15,7 @@ from prompt_toolkit.shortcuts import radiolist_dialog
 from requests.exceptions import HTTPError
 
 from openconnect_saml import config
-from openconnect_saml.authenticator import Authenticator, AuthResponseError
+from openconnect_saml.authenticator import HEADLESS_MODE, Authenticator, AuthResponseError
 from openconnect_saml.browser import Terminated
 from openconnect_saml.config import Credentials
 from openconnect_saml.profile import get_profiles
@@ -149,7 +149,10 @@ async def _run(args, cfg):
         selected_profile.address, selected_profile.user_group, selected_profile.name
     )
 
-    display_mode = config.DisplayMode[args.browser_display_mode.upper()]
+    if getattr(args, "headless", False):
+        display_mode = HEADLESS_MODE
+    else:
+        display_mode = config.DisplayMode[args.browser_display_mode.upper()]
 
     # Resolve timeout: CLI > config > default
     timeout = getattr(args, "timeout", None) or cfg.timeout or 30

@@ -1,6 +1,6 @@
 """Security audit tests — XXE, credential leaks, input validation, permissions."""
-import platform
 
+import platform
 import stat
 from unittest.mock import MagicMock, patch
 

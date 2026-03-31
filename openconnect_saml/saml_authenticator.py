@@ -8,6 +8,12 @@ log = structlog.get_logger()
 async def authenticate_in_browser(
     proxy, auth_info, credentials, display_mode, window_width=800, window_height=600
 ):
+    if Browser is None:
+        raise ImportError(
+            "PyQt6 is not installed. Install with: pip install openconnect-saml[gui]\n"
+            "Or use --headless mode for browser-free authentication."
+        )
+
     async with Browser(
         proxy, display_mode, window_width=window_width, window_height=window_height
     ) as browser:

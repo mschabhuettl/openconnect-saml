@@ -1,9 +1,9 @@
-import os
-import pytest
 import platform
 import shlex
 import sys
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from openconnect_saml.app import run_openconnect
 from openconnect_saml.config import HostProfile

@@ -9,6 +9,9 @@ from lxml import etree, objectify
 
 from openconnect_saml.saml_authenticator import authenticate_in_browser
 
+# Sentinel for headless mode
+HEADLESS_MODE = "headless"
+
 logger = structlog.get_logger()
 
 
@@ -100,6 +103,17 @@ class Authenticator:
         return parse_response(response)
 
     async def _authenticate_in_browser(self, auth_request_response, display_mode):
+        if display_mode == HEADLESS_MODE:
+            from openconnect_saml.headless import HeadlessAuthenticator
+
+            headless = HeadlessAuthenticator(
+                proxy=self.proxy,
+                credentials=self.credentials,
+                ssl_legacy=self.ssl_legacy,
+                timeout=self.timeout,
+            )
+            return await headless.authenticate(auth_request_response)
+
         return await authenticate_in_browser(
             self.proxy,
             auth_request_response,
