@@ -76,7 +76,11 @@ jobs:
           sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
           sed -i "s/^sha256sums=.*/sha256sums=('${SHA}')/" PKGBUILD
 
-          # Commit and push
-          git add -A
-          git commit -m "Update to ${VERSION}"
-          GIT_SSH_COMMAND="ssh -i ~/.ssh/id_ed25519" git push origin master
+          # Commit and push (only if there are changes)
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git add -A
+            git commit -m "Update to ${VERSION}"
+            GIT_SSH_COMMAND="ssh -i ~/.ssh/id_ed25519" git push origin master
+          fi
