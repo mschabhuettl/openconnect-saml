@@ -187,7 +187,7 @@ def _run_with_reconnect(
                 on_connect=cfg.on_connect,
                 routes=routes,
                 no_routes=no_routes,
-            useragent=getattr(args, "useragent", None),
+                useragent=getattr(args, "useragent", None),
             )
         except KeyboardInterrupt:
             logger.warn("CTRL-C pressed, stopping reconnect loop")
