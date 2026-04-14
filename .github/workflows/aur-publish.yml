@@ -56,8 +56,11 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts 2>/dev/null
 
+          # Test SSH connection
+          ssh -T aur@aur.archlinux.org 2>&1 || true
+
           # Clone AUR repo
-          git clone aur@aur.archlinux.org:openconnect-saml.git /tmp/aur-repo
+          GIT_SSH_COMMAND="ssh -i ~/.ssh/id_ed25519" git clone aur@aur.archlinux.org:openconnect-saml.git /tmp/aur-repo 2>&1
           cd /tmp/aur-repo
 
           # Update PKGBUILD
@@ -68,4 +71,4 @@ jobs:
           # Commit and push
           git add -A
           git commit -m "Update to ${VERSION}"
-          git push origin master
+          GIT_SSH_COMMAND="ssh -i ~/.ssh/id_ed25519" git push origin master
