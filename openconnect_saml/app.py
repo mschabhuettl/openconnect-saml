@@ -117,6 +117,7 @@ def run(args):
             on_connect=cfg.on_connect,
             routes=routes,
             no_routes=no_routes,
+            useragent=getattr(args, "useragent", None),
         )
         return rc
     except KeyboardInterrupt:
@@ -186,6 +187,7 @@ def _run_with_reconnect(
                 on_connect=cfg.on_connect,
                 routes=routes,
                 no_routes=no_routes,
+            useragent=getattr(args, "useragent", None),
             )
         except KeyboardInterrupt:
             logger.warn("CTRL-C pressed, stopping reconnect loop")
@@ -471,6 +473,7 @@ def run_openconnect(
     on_connect="",
     routes=None,
     no_routes=None,
+    useragent=None,
 ):
     superuser_cmd = None
 
@@ -488,9 +491,10 @@ def run_openconnect(
             )
             return 20
 
-    user_agent = (
-        f"AnyConnect Win {version}" if os.name == "nt" else f"AnyConnect Linux_64 {version}"
-    )
+    if not user_agent:
+        user_agent = (
+            f"AnyConnect Win {version}" if os.name == "nt" else f"AnyConnect Linux_64 {version}"
+        )
     openconnect_args = [
         "openconnect",
         "--useragent",

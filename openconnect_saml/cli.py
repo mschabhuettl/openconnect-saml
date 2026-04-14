@@ -233,6 +233,12 @@ def _add_connection_args(parser):
         help="Browser window size as WIDTHxHEIGHT (default: 800x600)",
         default=None,
     )
+    ui_group.add_argument(
+        "--useragent",
+        dest="useragent",
+        help="Custom User-Agent string for OpenConnect (default: AnyConnect Linux_64/x.x.x)",
+        default=None,
+    )
     return parser
 
 
