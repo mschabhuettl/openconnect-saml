@@ -494,6 +494,7 @@ def run_openconnect(
             )
             return 20
 
+    user_agent = useragent
     if not user_agent:
         user_agent = (
             f"AnyConnect Win {version}" if os.name == "nt" else f"AnyConnect Linux_64 {version}"
