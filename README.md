@@ -46,6 +46,7 @@
 | 🔑 **Bitwarden TOTP** | Fetch TOTP from Bitwarden CLI (`bw`) |
 | 🔔 **Notifications** | Desktop notifications for VPN events |
 | 🧙 **Setup Wizard** | Interactive `setup` command for easy configuration |
+| ☕ **Support** | [Buy Me a Coffee](https://www.buymeacoffee.com/mschabhuettl) — appreciate the work? |
 
 ## 📦 Installation
 
@@ -124,6 +125,17 @@ openconnect-saml --server vpn.example.com --browser chrome
 # Headless Chrome (no display needed)
 openconnect-saml --server vpn.example.com --browser headless
 ```
+
+**MFA with Push Notifications (Phone Approval)**
+
+If your VPN uses Azure AD with phone approval (Microsoft Authenticator "approve" push), Chrome mode can detect and prompt for the number shown on screen:
+
+```bash
+openconnect-saml --server vpn.example.com --browser chrome
+# When prompted: enter the 6-digit number shown on your phone approval screen
+```
+
+> ℹ️ Requires `pip install "openconnect-saml[chrome]"` and `playwright install chromium`
 
 ### Auto-Reconnect
 
@@ -499,3 +511,7 @@ ruff check .
 ## 📄 License
 
 [GPL-3.0](LICENSE)
+
+---
+
+<a href="https://www.buymeacoffee.com/mschabhuettl" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" style="height: 60px !important;width: 217px !important;" ></a>
