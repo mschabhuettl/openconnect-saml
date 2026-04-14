@@ -84,3 +84,38 @@ jobs:
             git commit -m "Update to ${VERSION}"
             GIT_SSH_COMMAND="ssh -i ~/.ssh/id_ed25519" git push origin master
           fi
+
+          # Generate .SRCINFO
+          echo 'pkgbase = openconnect-saml' > .SRCINFO
+          echo ' pkgdesc = OpenConnect wrapper with Azure AD (SAML) SSO support for Cisco SSL-VPNs' >> .SRCINFO
+          echo " pkgver = ${VERSION}" >> .SRCINFO
+          echo ' pkgrel = 1' >> .SRCINFO
+          echo ' url = https://github.com/mschabhuettl/openconnect-saml' >> .SRCINFO
+          echo ' arch = any' >> .SRCINFO
+          echo ' license = GPL-3.0-or-later' >> .SRCINFO
+          echo ' depends = python>=3.10' >> .SRCINFO
+          echo ' depends = openconnect' >> .SRCINFO
+          echo ' depends = python-attrs' >> .SRCINFO
+          echo ' depends = python-colorama' >> .SRCINFO
+          echo ' depends = python-keyring' >> .SRCINFO
+          echo ' depends = python-lxml' >> .SRCINFO
+          echo ' depends = python-prompt_toolkit' >> .SRCINFO
+          echo ' depends = python-pyotp' >> .SRCINFO
+          echo ' depends = python-pyqt6' >> .SRCINFO
+          echo ' depends = python-pyqt6-webengine' >> .SRCINFO
+          echo ' depends = python-pysocks' >> .SRCINFO
+          echo ' depends = python-pyxdg' >> .SRCINFO
+          echo ' depends = python-requests' >> .SRCINFO
+          echo ' depends = python-structlog' >> .SRCINFO
+          echo ' depends = python-toml' >> .SRCINFO
+          echo ' makedepends = python-build' >> .SRCINFO
+          echo ' makedepends = python-installer' >> .SRCINFO
+          echo ' makedepends = python-hatchling' >> .SRCINFO
+          echo " source = openconnect-saml-${VERSION}.tar.gz::https://github.com/mschabhuettl/openconnect-saml/archive/v${VERSION}.tar.gz" >> .SRCINFO
+          echo ' sha256sums = SKIP' >> .SRCINFO
+          echo >> .SRCINFO
+          echo 'pkgname = openconnect-saml' >> .SRCINFO
+          echo " download = https://github.com/mschabhuettl/openconnect-saml/archive/v${VERSION}.tar.gz" >> .SRCINFO
+          git add .SRCINFO
+          git commit -m "Update .SRCINFO"
+          GIT_SSH_COMMAND="ssh -i ~/.ssh/id_ed25519" git push origin master
