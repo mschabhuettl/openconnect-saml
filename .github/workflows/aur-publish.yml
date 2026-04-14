@@ -50,14 +50,18 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           SHA="${{ steps.sha256.outputs.sha256 }}"
 
+          # Debug: check SSH key is loaded
+          echo "SSH key length: ${#AUR_SSH_KEY}"
+          echo "SSH key first 50 chars: ${AUR_SSH_KEY:0:50}"
+
           # Set up SSH key for AUR
           mkdir -p ~/.ssh
           echo "$AUR_SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts 2>/dev/null
 
-          # Test SSH connection
-          ssh -T aur@aur.archlinux.org 2>&1 || true
+          # Debug: check if key is valid
+          ssh -T -i ~/.ssh/id_ed25519 aur@aur.archlinux.org 2>&1 || true
 
           # Clone AUR repo
           GIT_SSH_COMMAND="ssh -i ~/.ssh/id_ed25519" git clone aur@aur.archlinux.org:openconnect-saml.git /tmp/aur-repo 2>&1
