@@ -67,6 +67,10 @@ jobs:
           GIT_SSH_COMMAND="ssh -i ~/.ssh/id_ed25519" git clone aur@aur.archlinux.org:openconnect-saml.git /tmp/aur-repo 2>&1
           cd /tmp/aur-repo
 
+          # Configure git
+          git config --global user.email "aur@mschabhuettl.dev"
+          git config --global user.name "Matthias Schabhüttl"
+
           # Update PKGBUILD
           sed -i "s/^pkgver=.*/pkgver=${VERSION}/" PKGBUILD
           sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
