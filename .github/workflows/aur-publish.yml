@@ -43,32 +43,29 @@ jobs:
           echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
           echo "SHA256: $SHA"
 
-      - name: Update PKGBUILD
+      - name: Update AUR package
+        env:
+          AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           SHA="${{ steps.sha256.outputs.sha256 }}"
-          cd aur
+
+          # Set up SSH key for AUR
+          mkdir -p ~/.ssh
+          echo "$AUR_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts 2>/dev/null
+
+          # Clone AUR repo
+          git clone aur@aur.archlinux.org:openconnect-saml.git /tmp/aur-repo
+          cd /tmp/aur-repo
+
+          # Update PKGBUILD
           sed -i "s/^pkgver=.*/pkgver=${VERSION}/" PKGBUILD
           sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
           sed -i "s/^sha256sums=.*/sha256sums=('${SHA}')/" PKGBUILD
 
-      - name: Generate .SRCINFO
-        uses: hapakaien/archlinux-package-action@v2
-        with:
-          path: aur
-          flags: ""
-          namcap: false
-          srcinfo: true
-
-      - name: Publish to AUR
-        uses: KSXGitHub/github-actions-deploy-aur@v4.1.2
-        with:
-          pkgname: openconnect-saml
-          pkgbuild: aur/PKGBUILD
-          commit_username: "Matthias Schabhüttl"
-          commit_email: "aur@mschabhuettl.dev"
-          ssh_private_key: ${{ secrets.AUR_SSH_KEY }}
-          commit_message: "Update to ${{ steps.version.outputs.version }}"
-          force_push: true
-          command: "makepkg --noconfirm --skippgpcheck --nosign && git push origin main"
-          user: builder
+          # Commit and push
+          git add -A
+          git commit -m "Update to ${VERSION}"
+          git push origin master
