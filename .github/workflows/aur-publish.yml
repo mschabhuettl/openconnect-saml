@@ -70,3 +70,5 @@ jobs:
           ssh_private_key: ${{ secrets.AUR_SSH_KEY }}
           commit_message: "Update to ${{ steps.version.outputs.version }}"
           force_push: true
+          command: "makepkg --noconfirm --skippgpcheck && git push origin main"
+          user: builder
