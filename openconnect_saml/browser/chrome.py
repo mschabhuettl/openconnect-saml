@@ -10,7 +10,8 @@ Install with: pip install openconnect-saml[chrome]
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING
+import re
+from typing import TYPE_CHECKING, Callable, Awaitable
 
 import structlog
 
@@ -37,6 +38,20 @@ _TOTP_SELECTORS = [
     "input[id=idTxtBx_SAOTCC_OTC]",
     "input[name=otc]",
     "input[name=totp]",
+]
+
+# Number Challenge selectors (Azure AD phone approval shows a number to match)
+_NUMBER_CHALLENGE_DISPLAY_SELECTORS = [
+    "#idDiv_SAOTCAS_Title",  # "Your sign-in request" title
+    "#idDiv_SAOTCAS_Description",  # Shows the 6-digit code
+    "span[data-value-for=approval]",
+    "div.approval-number",
+]
+
+_NUMBER_CHALLENGE_WAIT_SELECTORS = [
+    "#idDiv_SAOTCAS_Title",
+    "div[data-value-for=PhoneAppOTP]",
+    "#KmsiCheckboxField",
 ]
 
 _SUBMIT_SELECTORS = [
@@ -112,6 +127,7 @@ class ChromeBrowser:
         credentials: Credentials | None = None,
         final_url: str | None = None,
         token_cookie_name: str | None = None,
+        number_challenge_callback: Callable[[str], Awaitable[None]] | None = None,
     ) -> dict[str, str]:
         """Navigate to the login URL and auto-fill credentials.
 
@@ -160,6 +176,16 @@ class ChromeBrowser:
             # Auto-fill credentials
             if credentials:
                 await self._auto_fill(credentials)
+
+            # Check for phone approval (Push notification) challenge
+            if number_challenge_callback:
+                if await self._check_number_challenge(number_challenge_callback):
+                    # User has been prompted for the approval number
+                    # Wait for navigation after they respond
+                    try:
+                        await self._page.wait_for_load_state("domcontentloaded", timeout=5000)
+                    except Exception:  # nosec
+                        pass
 
             # Wait for navigation or page change
             try:
@@ -231,6 +257,63 @@ class ChromeBrowser:
                             break
                 except Exception:  # nosec
                     continue
+
+    async def _check_number_challenge(
+        self, callback: Callable[[str], Awaitable[None]] | None = None
+    ) -> bool:
+        """Check if a phone approval number challenge is displayed.
+
+        Returns True if a number challenge was detected and handled.
+        The number is extracted and passed to the callback (which prompts the user).
+        """
+        # Check for the approval number display (Azure AD shows "Your sign-in request"
+        # with a 6-digit code that the user must confirm on their phone)
+        for sel in _NUMBER_CHALLENGE_DISPLAY_SELECTORS:
+            try:
+                el = self._page.locator(sel).first
+                if await el.is_visible(timeout=500):
+                    text = await el.inner_text()
+                    # Extract the 6-digit number from the description text
+                    # e.g. "Approve the sign-in request sent to +49***...\n123456"
+                    match = re.search(r"\b(\d{6})\b", text)
+                    if match:
+                        approval_number = match.group(1)
+                        logger.info("Chrome: detected number challenge", number=approval_number)
+                        if callback:
+                            await callback(approval_number)
+                        return True
+            except Exception:  # nosec
+                continue
+        return False
+
+    async def _handle_phone_approval_flow(self) -> bool:
+        """Handle Azure AD phone approval flow (Push notification + number match).
+
+        Returns True if the phone approval method was activated.
+        """
+        # First, try to switch to PhoneAppOTP method if we see "Sign in another way"
+        for sel in ["a[id=signInAnotherWay]", "#signInAnotherWay", "div[data-value-for=PhoneAppOTP]"]:
+            try:
+                el = self._page.locator(sel).first
+                if await el.is_visible(timeout=500):
+                    await el.click()
+                    logger.debug("Chrome: clicked sign-in another way")
+                    break
+            except Exception:  # nosec
+                continue
+
+        # Wait for the phone approval UI to appear
+        for sel in _NUMBER_CHALLENGE_WAIT_SELECTORS:
+            try:
+                el = self._page.locator(sel).first
+                if await el.is_visible(timeout=3000):
+                    logger.info("Chrome: phone approval UI detected")
+                    return True
+            except Exception:  # nosec
+                continue
+
+        return False
+
 
     async def _try_click_selectors(self, selectors: list[str]):
         """Try to click elements matching the given selectors."""
