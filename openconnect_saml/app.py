@@ -404,6 +404,7 @@ async def _run(args, cfg):
         timeout=timeout,
         window_width=cfg.window_width,
         window_height=cfg.window_height,
+        allowed_domain=getattr(args, "allowed_domain", None),
     )
 
     if credentials:
@@ -448,6 +449,7 @@ def authenticate_to(
     timeout=30,
     window_width=800,
     window_height=600,
+    allowed_domain=None,
 ):
     logger.info("Authenticating to VPN endpoint", name=host.name, address=host.address)
     return Authenticator(
@@ -459,6 +461,7 @@ def authenticate_to(
         timeout=timeout,
         window_width=window_width,
         window_height=window_height,
+        allowed_domain=allowed_domain,
     ).authenticate(display_mode)
 
 

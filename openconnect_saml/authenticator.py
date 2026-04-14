@@ -28,6 +28,7 @@ class Authenticator:
         timeout=30,
         window_width=800,
         window_height=600,
+        allowed_domain=None,
     ):
         self.host = host
         self.proxy = proxy
@@ -37,6 +38,7 @@ class Authenticator:
         self.ssl_legacy = ssl_legacy
         self.window_width = window_width
         self.window_height = window_height
+        self.allowed_domain = allowed_domain
         self.session = create_http_session(proxy, version, ssl_legacy=ssl_legacy)
 
     async def authenticate(self, display_mode):
@@ -113,6 +115,7 @@ class Authenticator:
                 credentials=self.credentials,
                 ssl_legacy=self.ssl_legacy,
                 timeout=self.timeout,
+                allowed_domain=self.allowed_domain,
             )
             return await headless.authenticate(auth_request_response)
 

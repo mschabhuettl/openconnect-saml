@@ -56,6 +56,10 @@ class HeadlessAuthenticator:
         Port for the local callback server.
     callback_timeout : int
         Max seconds to wait for browser callback.
+    allowed_domain : str or None
+        Whitelist of allowed domains for redirects. If set, redirects to
+        other domains will be blocked. If None, a warning is logged when
+        following redirects.
     """
 
     def __init__(
@@ -66,6 +70,7 @@ class HeadlessAuthenticator:
         timeout=30,
         callback_port=DEFAULT_CALLBACK_PORT,
         callback_timeout=DEFAULT_CALLBACK_TIMEOUT,
+        allowed_domain=None,
     ):
         self.proxy = proxy
         self.credentials = credentials
@@ -73,6 +78,7 @@ class HeadlessAuthenticator:
         self.timeout = timeout
         self.callback_port = callback_port
         self.callback_timeout = callback_timeout
+        self.allowed_domain = allowed_domain
         self.session = self._create_session()
 
     def _create_session(self):
@@ -109,6 +115,10 @@ class HeadlessAuthenticator:
         login_final_url = str(auth_request_response.login_final_url)
         token_cookie_name = str(auth_request_response.token_cookie_name)
 
+        # Validate initial URL against whitelist if configured
+        if self.allowed_domain:
+            self._check_domain_allowed(login_url, context="initial_url")
+
         if self.credentials and self.credentials.username:
             logger.info("Attempting automatic headless authentication")
             try:
@@ -143,12 +153,41 @@ class HeadlessAuthenticator:
         )
         return token
 
+    def _check_domain_allowed(self, url, context="redirect"):
+        """Check if a URL's domain is allowed based on the whitelist.
+
+        Returns True if allowed. Logs a warning if following a redirect
+        without a whitelist configured. Raises HeadlessAuthError if whitelist
+        is set but URL doesn't match.
+        """
+        parsed = urlparse(url)
+        hostname = parsed.hostname or ""
+
+        if not self.allowed_domain:
+            logger.warning(
+                "Following redirect without domain whitelist configured",
+                url=url,
+                context=context,
+            )
+            return True
+
+        # Check if the redirect target matches the allowed domain
+        if hostname.endswith(f".{self.allowed_domain}") or hostname == self.allowed_domain:
+            return True
+
+        raise HeadlessAuthError(
+            f"Redirect to untrusted domain: {hostname} (allowed: {self.allowed_domain})"
+        )
+
     def _auto_authenticate(self, login_url, login_final_url, token_cookie_name):
         """Automatic form-based authentication using requests + lxml."""
         from lxml import html as lxml_html
 
         resp = self.session.get(login_url, timeout=self.timeout, allow_redirects=True)
         resp.raise_for_status()
+
+        # Check domain after initial request
+        self._check_domain_allowed(resp.url, context="initial_response")
 
         max_steps = 20
         for step in range(max_steps):
@@ -181,6 +220,7 @@ class HeadlessAuthenticator:
                 # Maybe a JavaScript redirect — check for meta refresh or common patterns
                 meta_url = self._find_meta_refresh(doc, current_url)
                 if meta_url:
+                    self._check_domain_allowed(meta_url, context="meta_refresh")
                     resp = self.session.get(meta_url, timeout=self.timeout, allow_redirects=True)
                     resp.raise_for_status()
                     continue
@@ -188,6 +228,7 @@ class HeadlessAuthenticator:
                 # Check for auto-submit forms via regex as fallback
                 auto_url = self._find_auto_post_form(resp.text, current_url)
                 if auto_url:
+                    self._check_domain_allowed(auto_url[0], context="auto_post")
                     resp = self.session.post(
                         auto_url[0],
                         data=auto_url[1],
@@ -204,6 +245,9 @@ class HeadlessAuthenticator:
             action = form.action or current_url
             if not action.startswith("http"):
                 action = urljoin(current_url, action)
+
+            # Check domain before making request
+            self._check_domain_allowed(current_url, context="form_action")
 
             method = (form.method or "POST").upper()
 
@@ -236,6 +280,9 @@ class HeadlessAuthenticator:
                     action, data=form_data, timeout=self.timeout, allow_redirects=True
                 )
             resp.raise_for_status()
+
+            # Check the final URL after redirects
+            self._check_domain_allowed(resp.url, context="post_request")
 
         raise HeadlessAuthError("Max authentication steps exceeded")
 

@@ -219,6 +219,13 @@ def _add_connection_args(parser):
         default=False,
     )
     connection_group.add_argument(
+        "--allowed-domain",
+        dest="allowed_domain",
+        help="Whitelist domain for headless auth redirects (e.g. login.microsoft.com). "
+        "Prevents credential leaking to untrusted domains.",
+        default=None,
+    )
+    connection_group.add_argument(
         "--timeout",
         dest="timeout",
         help="HTTP request timeout in seconds (default: 30)",
