@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "openconnect-saml"
-version = "0.7.0"
+version = "0.7.1"
 description = "OpenConnect wrapper with Azure AD (SAML) SSO support for Cisco SSL-VPNs"
 readme = "README.md"
 license = "GPL-3.0-or-later"
