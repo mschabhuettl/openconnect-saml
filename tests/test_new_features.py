@@ -3,12 +3,13 @@
 from unittest.mock import MagicMock, patch
 
 from openconnect_saml.authenticator import (
+    Authenticator,
     SSLLegacyAdapter,
     UnexpectedResponse,
     create_http_session,
     parse_response,
 )
-from openconnect_saml.config import Config, Credentials
+from openconnect_saml.config import Config, Credentials, HostProfile
 
 # --- SSL Legacy (#81) ---
 
@@ -24,6 +25,33 @@ def test_create_http_session_with_ssl_legacy():
     session = create_http_session(None, "4.7.00136", ssl_legacy=True)
     adapter = session.get_adapter("https://example.com")
     assert isinstance(adapter, SSLLegacyAdapter)
+
+
+def test_detect_authentication_target_url_uses_plain_probe_session():
+    """Cisco entry hosts may reject the AnyConnect-header session GET with 404."""
+    host = HostProfile("https://vpn.example.com/group", "", "")
+    original_url = host.vpn_url
+    auth = Authenticator(host, version="4.7.00136")
+
+    redirected_response = MagicMock()
+    redirected_response.url = "https://entry29-vpn.example.com/group"
+    redirected_response.raise_for_status.return_value = None
+
+    probe_session = MagicMock()
+    probe_session.get.return_value = redirected_response
+
+    with (
+        patch.object(
+            auth.session,
+            "get",
+            side_effect=AssertionError("redirect probe should not use the auth session"),
+        ),
+        patch("openconnect_saml.authenticator.requests.Session", return_value=probe_session),
+    ):
+        auth._detect_authentication_target_url()
+
+    probe_session.get.assert_called_once_with(original_url, timeout=auth.timeout)
+    assert auth.host.address == redirected_response.url
 
 
 # --- TOTP binascii.Error (#143) ---
