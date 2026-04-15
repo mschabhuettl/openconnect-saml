@@ -92,7 +92,10 @@ class Authenticator:
     def _detect_authentication_target_url(self):
         # Follow possible redirects in a GET request
         # Authentication will occur using a POST request on the final URL
-        response = self.session.get(self.host.vpn_url, timeout=self.timeout)
+        response = create_probe_session(self.proxy, ssl_legacy=self.ssl_legacy).get(
+            self.host.vpn_url,
+            timeout=self.timeout,
+        )
         response.raise_for_status()
         self.host.address = response.url
         logger.debug("Auth target url", url=self.host.vpn_url)
@@ -198,6 +201,17 @@ def create_http_session(proxy, version, ssl_legacy=False):
             # I know, it is invalid but that's what Anyconnect sends
         }
     )
+    if ssl_legacy:
+        logger.info("Enabling SSL legacy renegotiation support")
+        adapter = SSLLegacyAdapter()
+        session.mount("https://", adapter)
+    return session
+
+
+def create_probe_session(proxy, ssl_legacy=False):
+    """Create a redirect-probe session without AnyConnect-only headers."""
+    session = requests.Session()
+    session.proxies = {"http": proxy, "https": proxy}
     if ssl_legacy:
         logger.info("Enabling SSL legacy renegotiation support")
         adapter = SSLLegacyAdapter()
