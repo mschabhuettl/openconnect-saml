@@ -1,7 +1,7 @@
 # Maintainer: Matthias Schabhuettl <aur@schabhuettl.net>
 
 pkgname=openconnect-saml
-pkgver=0.8.0
+pkgver=0.8.1
 pkgrel=1
 pkgdesc="OpenConnect wrapper with Azure AD / SAML SSO support"
 arch=('any')

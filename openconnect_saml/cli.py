@@ -334,6 +334,9 @@ def create_argparser():
     # service
     subparsers.add_parser("service", help="Manage systemd VPN service", add_help=False)
 
+    # gui
+    subparsers.add_parser("gui", help="Open a minimal GUI for saved profiles")
+
     # config
     config_parser = subparsers.add_parser("config", help="Inspect config file")
     config_sub = config_parser.add_subparsers(dest="config_action")
@@ -453,6 +456,47 @@ def create_service_argparser():
     return parser
 
 
+
+
+def _recover_connect_options_from_remainder(args):
+    """Recover openconnect-saml options swallowed after `connect PROFILE`.
+
+    argparse.REMAINDER is kept for backwards-compatible openconnect passthrough,
+    but it also captures options placed after the profile name.  This makes
+    `openconnect-saml connect work --browser chrome` silently use Qt (#21).
+    Pull known local options back out and leave the rest for openconnect.
+    """
+    remainder = list(getattr(args, "openconnect_args", []) or [])
+    if not remainder:
+        return
+
+    cleaned = []
+    i = 0
+    while i < len(remainder):
+        token = remainder[i]
+        if token == "--browser" and i + 1 < len(remainder) and remainder[i + 1] in {"qt", "chrome", "headless"}:
+            args.browser = remainder[i + 1]
+            if args.browser == "headless":
+                args.headless = True
+            i += 2
+            continue
+        if token.startswith("--browser="):
+            value = token.split("=", 1)[1]
+            if value in {"qt", "chrome", "headless"}:
+                args.browser = value
+                if value == "headless":
+                    args.headless = True
+                i += 1
+                continue
+        if token == "--headless":
+            args.headless = True
+            args.browser = "headless"
+            i += 1
+            continue
+        cleaned.append(token)
+        i += 1
+    args.openconnect_args = cleaned
+
 def _handle_profiles_command(args):
     from openconnect_saml.profiles import handle_profiles_command
 
@@ -501,8 +545,15 @@ def _handle_killswitch_command(args):
     return handle_killswitch_command(args)
 
 
+def _handle_gui_command():
+    from openconnect_saml.gui import main as gui_main
+
+    return gui_main()
+
+
 def _handle_connect(args, parser):
     """Handle the 'connect' subcommand or legacy invocation."""
+    _recover_connect_options_from_remainder(args)
     if args.browser and args.browser == "headless":
         args.headless = True
 
@@ -558,7 +609,7 @@ def _is_legacy_invocation(argv):
         return True
     known_subcommands = {
         "connect", "profiles", "status", "completion", "service", "setup",
-        "config", "doctor", "history", "killswitch",
+        "config", "doctor", "history", "killswitch", "gui",
     }
     first = argv[0]
     return first.startswith("-") or first not in known_subcommands
@@ -597,6 +648,8 @@ def main():
             return _handle_history_command(args)
         if args.command == "killswitch":
             return _handle_killswitch_command(args)
+        if args.command == "gui":
+            return _handle_gui_command()
 
         parser.print_help()
         return 0

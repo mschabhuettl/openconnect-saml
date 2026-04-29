@@ -1,6 +1,6 @@
 pkgbase = openconnect-saml
 	pkgdesc = OpenConnect wrapper with Azure AD / SAML SSO support
-	pkgver = 0.8.0
+	pkgver = 0.8.1
 	pkgrel = 1
 	url = https://github.com/mschabhuettl/openconnect-saml
 	arch = any
@@ -29,7 +29,7 @@ pkgbase = openconnect-saml
 	optdepends = 1password-cli: 1Password TOTP provider
 	optdepends = pass: pass-otp TOTP provider
 	optdepends = pass-otp: pass-otp extension for TOTP
-	source = https://github.com/mschabhuettl/openconnect-saml/archive/refs/tags/v0.8.0.tar.gz
+	source = https://github.com/mschabhuettl/openconnect-saml/archive/refs/tags/v0.8.1.tar.gz
 	sha256sums = SKIP
 
 pkgname = openconnect-saml

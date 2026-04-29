@@ -1,5 +1,6 @@
 import socket
 import ssl
+from urllib.parse import urljoin
 
 import attr
 import requests
@@ -264,7 +265,7 @@ def parse_response(resp):
         xml = objectify.fromstring(resp.content, parser=_make_safe_parser(recover=True))
     t = xml.get("type")
     if t == "auth-request":
-        return parse_auth_request_response(xml)
+        return parse_auth_request_response(xml, response_url=getattr(resp, "url", None))
     elif t == "complete":
         return parse_auth_complete_response(xml)
     else:
@@ -278,7 +279,34 @@ def parse_response(resp):
         return UnexpectedResponse(response_type=t, raw_content=resp.content)
 
 
-def parse_auth_request_response(xml):
+def _first_text_by_local_name(node, name):
+    """Return the first text value for an XML child with *name*, ignoring namespaces."""
+    matches = node.xpath(".//*[local-name()=$name]", name=name)
+    for match in matches:
+        text = getattr(match, "text", None)
+        if text:
+            return str(text)
+    return None
+
+
+def _first_form_action(auth_node, response_url=None):
+    """Find a form action in newer Cisco/Duo auth-request responses (#20)."""
+    forms = auth_node.xpath('.//*[local-name()="form"]')
+    for form in forms:
+        action = form.get("action")
+        if action:
+            return urljoin(response_url or "", action)
+    return None
+
+
+def _auth_field(auth_node, name):
+    try:
+        return auth_node[name]
+    except (AttributeError, KeyError):
+        return _first_text_by_local_name(auth_node, name)
+
+
+def parse_auth_request_response(xml, response_url=None):
     # Handle client-cert-request responses (#164)
     if hasattr(xml, "client-cert-request"):
         logger.info("client-cert-request received")
@@ -292,18 +320,31 @@ def parse_auth_request_response(xml):
         raise AuthResponseError(f"Expected auth id 'main', got '{xml.auth.get('id')}'")
 
     try:
+        login_url = _auth_field(xml.auth, "sso-v2-login") or _first_form_action(xml.auth, response_url)
+        login_final_url = _auth_field(xml.auth, "sso-v2-login-final") or login_url
+        token_cookie_name = _auth_field(xml.auth, "sso-v2-token-cookie-name") or "webvpn"
+        if not login_url:
+            child_names = [etree.QName(child).localname for child in xml.auth.iterchildren()]
+            raise AuthResponseError(
+                "SAML auth-request is missing sso-v2-login and no form action fallback "
+                f"was found. Available auth children: {', '.join(child_names) or '(none)'}"
+            )
         resp = AuthRequestResponse(
             auth_id=xml.auth.get("id"),
             auth_title=getattr(xml.auth, "title", ""),
             auth_message=getattr(xml.auth, "message", ""),  # #161/#175: defensive getattr
             auth_error=getattr(xml.auth, "error", ""),
             opaque=xml.opaque,
-            login_url=xml.auth["sso-v2-login"],
-            login_final_url=xml.auth["sso-v2-login-final"],
-            token_cookie_name=xml.auth["sso-v2-token-cookie-name"],
+            login_url=login_url,
+            login_final_url=login_final_url,
+            token_cookie_name=token_cookie_name,
         )
     except AttributeError as exc:
-        raise AuthResponseError(exc) from exc
+        raise AuthResponseError(
+            "Required SAML auth attributes were not found in the VPN response. "
+            "If this server uses Duo/Azure MFA, try --browser chrome and rerun with "
+            "--log-level DEBUG for diagnostics."
+        ) from exc
 
     logger.info(
         "Response received",

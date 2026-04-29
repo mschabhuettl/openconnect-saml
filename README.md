@@ -115,15 +115,33 @@ openconnect-saml --server vpn.example.com --headless --authenticate json
 
 ### Chrome/Chromium Browser
 
-Use Playwright-based Chromium instead of Qt WebEngine:
+Use Playwright-based Chromium instead of Qt WebEngine. This is recommended for
+Duo, YubiKey/Nitrokey/WebAuthn and Azure/Microsoft Authenticator push or
+number-matching flows, because the visible Chrome window lets you complete the
+hardware-token/MFA step directly.
 
 ```bash
 # Visible Chrome window
 openconnect-saml --server vpn.example.com --browser chrome
 
+# Saved profile with Chrome override
+openconnect-saml connect work --browser chrome
+
 # Headless Chrome (no display needed)
 openconnect-saml --server vpn.example.com --browser headless
 ```
+
+### Minimal Profile GUI
+
+For a small Cisco Secure Client-like launcher around saved profiles:
+
+```bash
+openconnect-saml gui
+```
+
+The GUI lists saved profiles, starts `connect <profile> --browser chrome`,
+shows output, and can terminate the VPN process. It is intentionally minimal;
+advanced options still live in the CLI.
 
 ### Auto-Reconnect
 
