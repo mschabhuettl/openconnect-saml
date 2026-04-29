@@ -65,11 +65,14 @@ class TestValidate:
         assert any(s == "error" and "not found" in m for s, m in issues)
 
     def test_valid_config(self, tmp_config_dir):
-        p = write_config(tmp_config_dir, """
+        p = write_config(
+            tmp_config_dir,
+            """
 [profiles.work]
 server = "vpn.example.com"
 user_group = "engineering"
-""")
+""",
+        )
         issues = config_cmd.validate_config(p)
         assert not any(s == "error" for s, _ in issues)
 
@@ -79,40 +82,53 @@ user_group = "engineering"
         assert any(s == "error" and "toml" in m.lower() for s, m in issues)
 
     def test_profile_missing_server(self, tmp_config_dir):
-        p = write_config(tmp_config_dir, """
+        p = write_config(
+            tmp_config_dir,
+            """
 [profiles.work]
 user_group = "engineering"
-""")
+""",
+        )
         issues = config_cmd.validate_config(p)
         assert any(s == "error" and "server" in m for s, m in issues)
 
     def test_active_profile_missing(self, tmp_config_dir):
-        p = write_config(tmp_config_dir, """
+        p = write_config(
+            tmp_config_dir,
+            """
 active_profile = "nope"
 [profiles.work]
 server = "vpn.example.com"
-""")
+""",
+        )
         issues = config_cmd.validate_config(p)
         assert any(s == "warning" and "active_profile" in m for s, m in issues)
 
     def test_2fauth_reference_without_section(self, tmp_config_dir):
-        p = write_config(tmp_config_dir, """
+        p = write_config(
+            tmp_config_dir,
+            """
 [profiles.work]
 server = "vpn.example.com"
 
 [profiles.work.credentials]
 username = "alice"
 totp_source = "2fauth"
-""")
+""",
+        )
         issues = config_cmd.validate_config(p)
         assert any(s == "warning" and "2fauth" in m for s, m in issues)
 
     def test_overly_permissive_mode(self, tmp_config_dir):
         import os
-        p = write_config(tmp_config_dir, """
+
+        p = write_config(
+            tmp_config_dir,
+            """
 [profiles.work]
 server = "vpn.example.com"
-""")
+""",
+        )
         # Make it world-readable
         os.chmod(p, 0o644)
         issues = config_cmd.validate_config(p)
@@ -135,7 +151,9 @@ class TestCmdShow:
         assert rc == 1
 
     def test_show_redacts_secrets(self, tmp_config_dir, capsys):
-        write_config(tmp_config_dir, """
+        write_config(
+            tmp_config_dir,
+            """
 [2fauth]
 url = "https://2fa.example.com"
 token = "supersecret"
@@ -143,7 +161,8 @@ account_id = 1
 
 [profiles.work]
 server = "vpn.example.com"
-""")
+""",
+        )
         rc = config_cmd._cmd_show(as_json=False)
         assert rc == 0
         captured = capsys.readouterr()
@@ -151,7 +170,9 @@ server = "vpn.example.com"
         assert "***" in captured.out
 
     def test_show_json(self, tmp_config_dir, capsys):
-        write_config(tmp_config_dir, """
+        write_config(
+            tmp_config_dir,
+            """
 [2fauth]
 token = "s"
 url = "https://x"
@@ -159,7 +180,8 @@ account_id = 1
 
 [profiles.work]
 server = "vpn.example.com"
-""")
+""",
+        )
         rc = config_cmd._cmd_show(as_json=True)
         assert rc == 0
         captured = capsys.readouterr()
@@ -172,18 +194,24 @@ server = "vpn.example.com"
 
 class TestCmdValidate:
     def test_valid(self, tmp_config_dir, capsys):
-        write_config(tmp_config_dir, """
+        write_config(
+            tmp_config_dir,
+            """
 [profiles.work]
 server = "vpn.example.com"
-""")
+""",
+        )
         rc = config_cmd._cmd_validate()
         assert rc == 0
 
     def test_invalid_returns_1(self, tmp_config_dir, capsys):
-        write_config(tmp_config_dir, """
+        write_config(
+            tmp_config_dir,
+            """
 [profiles.work]
 user_group = "engineering"
-""")
+""",
+        )
         rc = config_cmd._cmd_validate()
         assert rc == 1
 

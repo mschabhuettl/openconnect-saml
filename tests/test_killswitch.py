@@ -47,10 +47,14 @@ class TestHelpers:
 
     def test_resolve_server_ips_failure(self):
         import socket
-        with patch(
-            "openconnect_saml.killswitch.socket.getaddrinfo",
-            side_effect=socket.gaierror("bad host"),
-        ), pytest.raises(KillSwitchError):
+
+        with (
+            patch(
+                "openconnect_saml.killswitch.socket.getaddrinfo",
+                side_effect=socket.gaierror("bad host"),
+            ),
+            pytest.raises(KillSwitchError),
+        ):
             _resolve_server_ips("does-not-exist.invalid")
 
 
@@ -65,23 +69,31 @@ class TestPlatformCheck:
 @pytest.mark.skipif(platform.system() != "Linux", reason="Linux only")
 class TestKillSwitchLinux:
     def test_not_active_when_chain_missing(self):
-        with patch("openconnect_saml.killswitch.subprocess.run",
-                   return_value=_mk(1, "", "No chain/target/match")), \
-                patch("openconnect_saml.killswitch.shutil.which", return_value="/sbin/iptables"):
+        with (
+            patch(
+                "openconnect_saml.killswitch.subprocess.run",
+                return_value=_mk(1, "", "No chain/target/match"),
+            ),
+            patch("openconnect_saml.killswitch.shutil.which", return_value="/sbin/iptables"),
+        ):
             ks = KillSwitch(KillSwitchConfig(sudo=""))
             assert ks.is_active() is False
 
     def test_active_when_chain_present(self):
-        with patch("openconnect_saml.killswitch.subprocess.run",
-                   return_value=_mk(0, "", "")), \
-                patch("openconnect_saml.killswitch.shutil.which", return_value="/sbin/iptables"):
+        with (
+            patch("openconnect_saml.killswitch.subprocess.run", return_value=_mk(0, "", "")),
+            patch("openconnect_saml.killswitch.shutil.which", return_value="/sbin/iptables"),
+        ):
             ks = KillSwitch(KillSwitchConfig(sudo=""))
             assert ks.is_active() is True
 
     def test_disable_is_idempotent(self):
-        with patch("openconnect_saml.killswitch.subprocess.run",
-                   return_value=_mk(1, "", "")) as mock_run, \
-                patch("openconnect_saml.killswitch.shutil.which", return_value="/sbin/iptables"):
+        with (
+            patch(
+                "openconnect_saml.killswitch.subprocess.run", return_value=_mk(1, "", "")
+            ) as mock_run,
+            patch("openconnect_saml.killswitch.shutil.which", return_value="/sbin/iptables"),
+        ):
             ks = KillSwitch(KillSwitchConfig(sudo="", ipv6=False))
             ks.disable(silent=True)
             assert mock_run.called
@@ -97,13 +109,21 @@ class TestKillSwitchLinux:
                 return _mk(1, "", "No chain")
             return _mk(0, "", "")
 
-        with patch("openconnect_saml.killswitch.socket.getaddrinfo", return_value=fake_info), \
-                patch("openconnect_saml.killswitch.subprocess.run", side_effect=fake_run), \
-                patch("openconnect_saml.killswitch.shutil.which",
-                      side_effect=lambda x: "/sbin/iptables" if x == "iptables" else None):
-            ks = KillSwitch(KillSwitchConfig(
-                server_host="vpn.example.com", sudo="", ipv6=False,
-            ))
+        with (
+            patch("openconnect_saml.killswitch.socket.getaddrinfo", return_value=fake_info),
+            patch("openconnect_saml.killswitch.subprocess.run", side_effect=fake_run),
+            patch(
+                "openconnect_saml.killswitch.shutil.which",
+                side_effect=lambda x: "/sbin/iptables" if x == "iptables" else None,
+            ),
+        ):
+            ks = KillSwitch(
+                KillSwitchConfig(
+                    server_host="vpn.example.com",
+                    sudo="",
+                    ipv6=False,
+                )
+            )
             ks.enable()
             # Check that at least one rule was added with the resolved IP
             added = [c for c in calls if "-A" in c and "10.0.0.1" in c]
@@ -116,8 +136,10 @@ class TestKillSwitchCLI:
             killswitch_action = "enable"
             server = None
 
-        with patch("openconnect_saml.killswitch.platform.system", return_value="Linux"), \
-                patch("openconnect_saml.killswitch.shutil.which", return_value="/sbin/iptables"):
+        with (
+            patch("openconnect_saml.killswitch.platform.system", return_value="Linux"),
+            patch("openconnect_saml.killswitch.shutil.which", return_value="/sbin/iptables"),
+        ):
             rc = handle_killswitch_command(Args())
             assert rc == 1
             captured = capsys.readouterr()
@@ -132,5 +154,7 @@ class TestKillSwitchCLI:
             rc = handle_killswitch_command(Args())
             assert rc == 2
             captured = capsys.readouterr()
-            assert "only supported on Linux" in captured.out.lower() or \
-                "supported on linux" in captured.out.lower()
+            assert (
+                "only supported on Linux" in captured.out.lower()
+                or "supported on linux" in captured.out.lower()
+            )

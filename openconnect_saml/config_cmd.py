@@ -54,7 +54,12 @@ def resolve_config_path(create: bool = False) -> Path:
 # Keys whose values should be redacted when shown. Matched case-insensitively
 # as substrings against the key name.
 _SECRET_KEY_HINTS = (
-    "password", "token", "secret", "session", "api_key", "apikey",
+    "password",
+    "token",
+    "secret",
+    "session",
+    "api_key",
+    "apikey",
 )
 
 
@@ -66,9 +71,7 @@ def _should_redact(key: str) -> bool:
 def _redact(data):
     """Recursively redact secret values in a nested structure."""
     if isinstance(data, dict):
-        return {
-            k: ("***" if _should_redact(k) and v else _redact(v)) for k, v in data.items()
-        }
+        return {k: ("***" if _should_redact(k) and v else _redact(v)) for k, v in data.items()}
     if isinstance(data, list):
         return [_redact(v) for v in data]
     return data
@@ -95,10 +98,12 @@ def validate_config(path: Path) -> list[tuple[str, str]]:
     if os.name == "posix":
         mode = path.stat().st_mode & 0o777
         if mode & 0o077:
-            issues.append((
-                "warning",
-                f"Config file has overly permissive mode {oct(mode)} (should be 0600)",
-            ))
+            issues.append(
+                (
+                    "warning",
+                    f"Config file has overly permissive mode {oct(mode)} (should be 0600)",
+                )
+            )
 
     # Parse TOML
     try:
@@ -134,24 +139,30 @@ def validate_config(path: Path) -> list[tuple[str, str]]:
                 if src == "2fauth":
                     prof_twofa = prof.get("2fauth") or raw.get("2fauth")
                     if not prof_twofa:
-                        issues.append((
-                            "warning",
-                            f"profile '{name}' uses 2fauth but no [2fauth] config found",
-                        ))
+                        issues.append(
+                            (
+                                "warning",
+                                f"profile '{name}' uses 2fauth but no [2fauth] config found",
+                            )
+                        )
                 elif src == "bitwarden":
                     prof_bw = prof.get("bitwarden") or raw.get("bitwarden")
                     if not prof_bw:
-                        issues.append((
-                            "warning",
-                            f"profile '{name}' uses bitwarden but no [bitwarden] config found",
-                        ))
+                        issues.append(
+                            (
+                                "warning",
+                                f"profile '{name}' uses bitwarden but no [bitwarden] config found",
+                            )
+                        )
 
     active = raw.get("active_profile")
     if active and active not in profiles:
-        issues.append((
-            "warning",
-            f"'active_profile' is set to '{active}' but no such profile exists",
-        ))
+        issues.append(
+            (
+                "warning",
+                f"'active_profile' is set to '{active}' but no such profile exists",
+            )
+        )
 
     # Default profile sanity
     dp = raw.get("default_profile")
@@ -169,10 +180,12 @@ def validate_config(path: Path) -> list[tuple[str, str]]:
         for field in ("routes", "no_routes"):
             for route in prof.get(field, []) or []:
                 if not isinstance(route, str) or "/" not in route:
-                    issues.append((
-                        "warning",
-                        f"profile '{name}' has invalid CIDR in {field}: {route!r}",
-                    ))
+                    issues.append(
+                        (
+                            "warning",
+                            f"profile '{name}' has invalid CIDR in {field}: {route!r}",
+                        )
+                    )
 
     _ = cfg  # silence unused
     return issues

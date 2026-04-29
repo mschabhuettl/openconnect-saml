@@ -97,9 +97,7 @@ def test_read_history_ignores_bad_lines(tmp_state_home):
 
 class TestConnectionTracker:
     def test_full_lifecycle(self, tmp_state_home):
-        tracker = history.ConnectionTracker(
-            server="vpn.example.com", profile="work", user="alice"
-        )
+        tracker = history.ConnectionTracker(server="vpn.example.com", profile="work", user="alice")
         tracker.start()
         tracker.stop("clean exit")
         entries = history.read_history()

@@ -19,12 +19,17 @@ def _mk_cfg(profs_data=None, **kwargs):
 
 class TestExport:
     def test_export_single_to_stdout(self, capsys):
-        cfg = _mk_cfg({"work": {
-            "server": "vpn.example.com",
-            "user_group": "eng",
-            "name": "Work",
-        }})
+        cfg = _mk_cfg(
+            {
+                "work": {
+                    "server": "vpn.example.com",
+                    "user_group": "eng",
+                    "name": "Work",
+                }
+            }
+        )
         with patch("openconnect_saml.profiles.config.load", return_value=cfg):
+
             class Args:
                 profile_name = "work"
                 file = None
@@ -39,6 +44,7 @@ class TestExport:
     def test_export_missing_profile(self, capsys):
         cfg = _mk_cfg()
         with patch("openconnect_saml.profiles.config.load", return_value=cfg):
+
             class Args:
                 profile_name = "nope"
                 file = None
@@ -47,11 +53,14 @@ class TestExport:
         assert rc == 1
 
     def test_export_all(self, capsys):
-        cfg = _mk_cfg({
-            "work": {"server": "vpn.example.com"},
-            "home": {"server": "home.example.com"},
-        })
+        cfg = _mk_cfg(
+            {
+                "work": {"server": "vpn.example.com"},
+                "home": {"server": "home.example.com"},
+            }
+        )
         with patch("openconnect_saml.profiles.config.load", return_value=cfg):
+
             class Args:
                 profile_name = None
                 file = None
@@ -67,6 +76,7 @@ class TestExport:
         cfg = _mk_cfg({"work": {"server": "vpn.example.com"}})
         out = tmp_path / "out.json"
         with patch("openconnect_saml.profiles.config.load", return_value=cfg):
+
             class Args:
                 profile_name = "work"
                 file = str(out)
@@ -77,9 +87,7 @@ class TestExport:
         assert data["profile"]["server"] == "vpn.example.com"
 
     def test_export_strips_2fauth_token(self, capsys):
-        twofa = config.TwoFAuthConfig(
-            url="https://2fa.example.com", token="SECRET", account_id=1
-        )
+        twofa = config.TwoFAuthConfig(url="https://2fa.example.com", token="SECRET", account_id=1)
         prof = config.ProfileConfig(
             server="vpn.example.com", user_group="", name="Work", twofauth=twofa
         )
@@ -87,6 +95,7 @@ class TestExport:
         cfg.profiles["work"] = prof
 
         with patch("openconnect_saml.profiles.config.load", return_value=cfg):
+
             class Args:
                 profile_name = "work"
                 file = None
@@ -107,7 +116,8 @@ class TestExport:
         prof = config.ProfileConfig.from_dict(data)
         # Now artificially inject a password key by patching as_dict
         with patch.object(
-            prof, "as_dict",
+            prof,
+            "as_dict",
             return_value={
                 "server": "vpn.example.com",
                 "user_group": "",
@@ -125,6 +135,7 @@ class TestExport:
             cfg.profiles["work"] = prof
 
             with patch("openconnect_saml.profiles.config.load", return_value=cfg):
+
                 class Args:
                     profile_name = "work"
                     file = None
@@ -144,23 +155,30 @@ class TestExport:
 class TestImport:
     def test_import_from_file(self, tmp_path, capsys):
         f = tmp_path / "in.json"
-        f.write_text(json.dumps({
-            "version": 1,
-            "profile": {
-                "_name": "work",
-                "server": "vpn.example.com",
-                "user_group": "eng",
-                "name": "Work",
-            },
-        }))
+        f.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "profile": {
+                        "_name": "work",
+                        "server": "vpn.example.com",
+                        "user_group": "eng",
+                        "name": "Work",
+                    },
+                }
+            )
+        )
         saved_cfg = {}
 
         def fake_save(cfg):
             saved_cfg["cfg"] = cfg
 
         cfg = config.Config()
-        with patch("openconnect_saml.profiles.config.load", return_value=cfg), \
-                patch("openconnect_saml.profiles.config.save", side_effect=fake_save):
+        with (
+            patch("openconnect_saml.profiles.config.load", return_value=cfg),
+            patch("openconnect_saml.profiles.config.save", side_effect=fake_save),
+        ):
+
             class Args:
                 file = str(f)
                 as_name = None
@@ -172,9 +190,13 @@ class TestImport:
 
     def test_import_refuses_overwrite_without_force(self, tmp_path, capsys):
         f = tmp_path / "in.json"
-        f.write_text(json.dumps({
-            "profile": {"_name": "work", "server": "vpn2.example.com"},
-        }))
+        f.write_text(
+            json.dumps(
+                {
+                    "profile": {"_name": "work", "server": "vpn2.example.com"},
+                }
+            )
+        )
         cfg = _mk_cfg({"work": {"server": "vpn.example.com"}})
 
         saved = []
@@ -182,8 +204,11 @@ class TestImport:
         def fake_save(c):
             saved.append(c)
 
-        with patch("openconnect_saml.profiles.config.load", return_value=cfg), \
-                patch("openconnect_saml.profiles.config.save", side_effect=fake_save):
+        with (
+            patch("openconnect_saml.profiles.config.load", return_value=cfg),
+            patch("openconnect_saml.profiles.config.save", side_effect=fake_save),
+        ):
+
             class Args:
                 file = str(f)
                 as_name = None
@@ -197,12 +222,19 @@ class TestImport:
 
     def test_import_with_force_overwrites(self, tmp_path):
         f = tmp_path / "in.json"
-        f.write_text(json.dumps({
-            "profile": {"_name": "work", "server": "vpn2.example.com"},
-        }))
+        f.write_text(
+            json.dumps(
+                {
+                    "profile": {"_name": "work", "server": "vpn2.example.com"},
+                }
+            )
+        )
         cfg = _mk_cfg({"work": {"server": "vpn.example.com"}})
-        with patch("openconnect_saml.profiles.config.load", return_value=cfg), \
-                patch("openconnect_saml.profiles.config.save"):
+        with (
+            patch("openconnect_saml.profiles.config.load", return_value=cfg),
+            patch("openconnect_saml.profiles.config.save"),
+        ):
+
             class Args:
                 file = str(f)
                 as_name = None
@@ -214,12 +246,19 @@ class TestImport:
 
     def test_import_rename_with_as(self, tmp_path):
         f = tmp_path / "in.json"
-        f.write_text(json.dumps({
-            "profile": {"_name": "work", "server": "vpn.example.com"},
-        }))
+        f.write_text(
+            json.dumps(
+                {
+                    "profile": {"_name": "work", "server": "vpn.example.com"},
+                }
+            )
+        )
         cfg = config.Config()
-        with patch("openconnect_saml.profiles.config.load", return_value=cfg), \
-                patch("openconnect_saml.profiles.config.save"):
+        with (
+            patch("openconnect_saml.profiles.config.load", return_value=cfg),
+            patch("openconnect_saml.profiles.config.save"),
+        ):
+
             class Args:
                 file = str(f)
                 as_name = "workplace"
@@ -234,6 +273,7 @@ class TestImport:
         f = tmp_path / "in.json"
         f.write_text("this is not json")
         with patch("openconnect_saml.profiles.config.load", return_value=config.Config()):
+
             class Args:
                 file = str(f)
                 as_name = None
@@ -244,16 +284,23 @@ class TestImport:
 
     def test_import_multiple_profiles(self, tmp_path):
         f = tmp_path / "in.json"
-        f.write_text(json.dumps({
-            "version": 1,
-            "profiles": {
-                "work": {"server": "vpn.example.com"},
-                "home": {"server": "home.example.com"},
-            },
-        }))
+        f.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "profiles": {
+                        "work": {"server": "vpn.example.com"},
+                        "home": {"server": "home.example.com"},
+                    },
+                }
+            )
+        )
         cfg = config.Config()
-        with patch("openconnect_saml.profiles.config.load", return_value=cfg), \
-                patch("openconnect_saml.profiles.config.save"):
+        with (
+            patch("openconnect_saml.profiles.config.load", return_value=cfg),
+            patch("openconnect_saml.profiles.config.save"),
+        ):
+
             class Args:
                 file = str(f)
                 as_name = None
@@ -266,13 +313,18 @@ class TestImport:
 
     def test_import_as_with_multiple_fails(self, tmp_path):
         f = tmp_path / "in.json"
-        f.write_text(json.dumps({
-            "profiles": {
-                "a": {"server": "a.example.com"},
-                "b": {"server": "b.example.com"},
-            },
-        }))
+        f.write_text(
+            json.dumps(
+                {
+                    "profiles": {
+                        "a": {"server": "a.example.com"},
+                        "b": {"server": "b.example.com"},
+                    },
+                }
+            )
+        )
         with patch("openconnect_saml.profiles.config.load", return_value=config.Config()):
+
             class Args:
                 file = str(f)
                 as_name = "renamed"
@@ -283,13 +335,20 @@ class TestImport:
 
     def test_import_bare_profile(self, tmp_path):
         f = tmp_path / "in.json"
-        f.write_text(json.dumps({
-            "server": "vpn.example.com",
-            "_name": "work",
-        }))
+        f.write_text(
+            json.dumps(
+                {
+                    "server": "vpn.example.com",
+                    "_name": "work",
+                }
+            )
+        )
         cfg = config.Config()
-        with patch("openconnect_saml.profiles.config.load", return_value=cfg), \
-                patch("openconnect_saml.profiles.config.save"):
+        with (
+            patch("openconnect_saml.profiles.config.load", return_value=cfg),
+            patch("openconnect_saml.profiles.config.save"),
+        ):
+
             class Args:
                 file = str(f)
                 as_name = None
@@ -303,8 +362,11 @@ class TestImport:
 class TestRename:
     def test_rename(self, capsys):
         cfg = _mk_cfg({"work": {"server": "vpn.example.com"}})
-        with patch("openconnect_saml.profiles.config.load", return_value=cfg), \
-                patch("openconnect_saml.profiles.config.save"):
+        with (
+            patch("openconnect_saml.profiles.config.load", return_value=cfg),
+            patch("openconnect_saml.profiles.config.save"),
+        ):
+
             class Args:
                 profile_name = "work"
                 new_name = "office"
@@ -317,6 +379,7 @@ class TestRename:
     def test_rename_missing(self, capsys):
         cfg = config.Config()
         with patch("openconnect_saml.profiles.config.load", return_value=cfg):
+
             class Args:
                 profile_name = "nope"
                 new_name = "gone"
@@ -325,11 +388,14 @@ class TestRename:
         assert rc == 1
 
     def test_rename_conflict(self):
-        cfg = _mk_cfg({
-            "work": {"server": "w"},
-            "home": {"server": "h"},
-        })
+        cfg = _mk_cfg(
+            {
+                "work": {"server": "w"},
+                "home": {"server": "h"},
+            }
+        )
         with patch("openconnect_saml.profiles.config.load", return_value=cfg):
+
             class Args:
                 profile_name = "work"
                 new_name = "home"
@@ -339,8 +405,11 @@ class TestRename:
 
     def test_rename_updates_active(self):
         cfg = _mk_cfg({"work": {"server": "w"}}, active_profile="work")
-        with patch("openconnect_saml.profiles.config.load", return_value=cfg), \
-                patch("openconnect_saml.profiles.config.save"):
+        with (
+            patch("openconnect_saml.profiles.config.load", return_value=cfg),
+            patch("openconnect_saml.profiles.config.save"),
+        ):
+
             class Args:
                 profile_name = "work"
                 new_name = "office"

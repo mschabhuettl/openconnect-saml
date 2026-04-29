@@ -43,35 +43,45 @@ class TestOpenconnect:
         fake_result.stdout = "OpenConnect version v9.10\n"
         fake_result.stderr = ""
         fake_result.returncode = 0
-        with patch("openconnect_saml.doctor.shutil.which", return_value="/usr/bin/openconnect"), \
-                patch("openconnect_saml.doctor.subprocess.run", return_value=fake_result):
+        with (
+            patch("openconnect_saml.doctor.shutil.which", return_value="/usr/bin/openconnect"),
+            patch("openconnect_saml.doctor.subprocess.run", return_value=fake_result),
+        ):
             r = doctor._check_openconnect()
             assert r.status == doctor.STATUS_OK
 
 
 class TestSudoCheck:
     def test_sudo_available(self):
-        with patch("openconnect_saml.doctor.shutil.which",
-                   side_effect=lambda x: "/usr/bin/sudo" if x == "sudo" else None):
+        with patch(
+            "openconnect_saml.doctor.shutil.which",
+            side_effect=lambda x: "/usr/bin/sudo" if x == "sudo" else None,
+        ):
             r = doctor._check_sudo()
             assert r.status == doctor.STATUS_OK
 
     def test_doas_preferred_over_sudo(self):
-        with patch("openconnect_saml.doctor.shutil.which",
-                   side_effect=lambda x: "/usr/bin/doas" if x in ("doas", "sudo") else None):
+        with patch(
+            "openconnect_saml.doctor.shutil.which",
+            side_effect=lambda x: "/usr/bin/doas" if x in ("doas", "sudo") else None,
+        ):
             r = doctor._check_sudo()
             assert r.status == doctor.STATUS_OK
             assert "doas" in r.message
 
     def test_windows_is_skipped(self):
-        with patch("openconnect_saml.doctor.shutil.which", return_value=None), \
-                patch("openconnect_saml.doctor.platform.system", return_value="Windows"):
+        with (
+            patch("openconnect_saml.doctor.shutil.which", return_value=None),
+            patch("openconnect_saml.doctor.platform.system", return_value="Windows"),
+        ):
             r = doctor._check_sudo()
             assert r.status == doctor.STATUS_SKIP
 
     def test_missing_both_on_linux_is_warn(self):
-        with patch("openconnect_saml.doctor.shutil.which", return_value=None), \
-                patch("openconnect_saml.doctor.platform.system", return_value="Linux"):
+        with (
+            patch("openconnect_saml.doctor.shutil.which", return_value=None),
+            patch("openconnect_saml.doctor.platform.system", return_value="Linux"),
+        ):
             r = doctor._check_sudo()
             assert r.status == doctor.STATUS_WARN
 
@@ -88,10 +98,10 @@ class TestPythonDeps:
             if name == "attrs":
                 raise ImportError(f"no module named {name}")
             import importlib as _il
+
             return _il.import_module(name)
 
-        with patch("openconnect_saml.doctor.importlib.import_module",
-                   side_effect=fake_import):
+        with patch("openconnect_saml.doctor.importlib.import_module", side_effect=fake_import):
             results = doctor._check_python_deps()
             attrs_check = next(r for r in results if "attrs" in r.name)
             assert attrs_check.status == doctor.STATUS_FAIL
@@ -111,8 +121,10 @@ class TestDNSResolution:
 
     def test_failure(self):
         import socket
-        with patch("openconnect_saml.doctor.socket.getaddrinfo",
-                   side_effect=socket.gaierror("nope")):
+
+        with patch(
+            "openconnect_saml.doctor.socket.getaddrinfo", side_effect=socket.gaierror("nope")
+        ):
             r = doctor._check_dns_resolution("does-not-exist.invalid")
             assert r.status == doctor.STATUS_FAIL
 
@@ -123,8 +135,7 @@ class TestServerReachable:
         assert r.status == doctor.STATUS_SKIP
 
     def test_uses_url_port(self):
-        with patch("openconnect_saml.doctor.socket.create_connection",
-                   return_value=MagicMock()):
+        with patch("openconnect_saml.doctor.socket.create_connection", return_value=MagicMock()):
             r = doctor._check_server_reachable("https://vpn.example.com:8443")
             assert r.status == doctor.STATUS_OK
             assert "8443" in r.name
@@ -137,8 +148,10 @@ class TestKillSwitchState:
             assert r.status == doctor.STATUS_SKIP
 
     def test_no_iptables(self):
-        with patch("openconnect_saml.doctor.platform.system", return_value="Linux"), \
-                patch("openconnect_saml.doctor.shutil.which", return_value=None):
+        with (
+            patch("openconnect_saml.doctor.platform.system", return_value="Linux"),
+            patch("openconnect_saml.doctor.shutil.which", return_value=None),
+        ):
             r = doctor._check_killswitch_state()
             assert r.status == doctor.STATUS_SKIP
 

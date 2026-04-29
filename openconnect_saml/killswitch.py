@@ -169,9 +169,7 @@ class KillSwitch:
 
         self._install_chain("iptables", server_ips=[ip for ip in server_ips if not _is_ipv6(ip)])
         if self.config.ipv6:
-            self._install_chain(
-                "ip6tables", server_ips=[ip for ip in server_ips if _is_ipv6(ip)]
-            )
+            self._install_chain("ip6tables", server_ips=[ip for ip in server_ips if _is_ipv6(ip)])
 
         logger.info("Kill-switch enabled", chain=CHAIN_NAME)
 
@@ -260,12 +258,19 @@ class KillSwitch:
         self._run([tool, "-F", CHAIN_NAME])  # Flush in case of partial state
 
         # Allow established/related (so replies to outbound connections work)
-        self._run([
-            tool, "-A", CHAIN_NAME,
-            "-m", "conntrack",
-            "--ctstate", "ESTABLISHED,RELATED",
-            "-j", "ACCEPT",
-        ])
+        self._run(
+            [
+                tool,
+                "-A",
+                CHAIN_NAME,
+                "-m",
+                "conntrack",
+                "--ctstate",
+                "ESTABLISHED,RELATED",
+                "-j",
+                "ACCEPT",
+            ]
+        )
 
         # Allow loopback
         self._run([tool, "-A", CHAIN_NAME, "-o", "lo", "-j", "ACCEPT"])
@@ -280,25 +285,55 @@ class KillSwitch:
                 not _is_ipv6(dns) and tool == "iptables"
             ):
                 for proto in ("udp", "tcp"):
-                    self._run([
-                        tool, "-A", CHAIN_NAME,
-                        "-p", proto, "-d", dns, "--dport", "53",
-                        "-j", "ACCEPT",
-                    ])
+                    self._run(
+                        [
+                            tool,
+                            "-A",
+                            CHAIN_NAME,
+                            "-p",
+                            proto,
+                            "-d",
+                            dns,
+                            "--dport",
+                            "53",
+                            "-j",
+                            "ACCEPT",
+                        ]
+                    )
 
         # Allow traffic to the VPN server
         for ip in server_ips:
-            self._run([
-                tool, "-A", CHAIN_NAME,
-                "-p", "tcp", "-d", ip, "--dport", str(self.config.server_port),
-                "-j", "ACCEPT",
-            ])
+            self._run(
+                [
+                    tool,
+                    "-A",
+                    CHAIN_NAME,
+                    "-p",
+                    "tcp",
+                    "-d",
+                    ip,
+                    "--dport",
+                    str(self.config.server_port),
+                    "-j",
+                    "ACCEPT",
+                ]
+            )
             # Also UDP for DTLS / OpenConnect keepalives
-            self._run([
-                tool, "-A", CHAIN_NAME,
-                "-p", "udp", "-d", ip, "--dport", str(self.config.server_port),
-                "-j", "ACCEPT",
-            ])
+            self._run(
+                [
+                    tool,
+                    "-A",
+                    CHAIN_NAME,
+                    "-p",
+                    "udp",
+                    "-d",
+                    ip,
+                    "--dport",
+                    str(self.config.server_port),
+                    "-j",
+                    "ACCEPT",
+                ]
+            )
 
         # Allow LAN traffic if requested (RFC1918 for v4, link-local for v6)
         if self.config.allow_lan:
@@ -310,13 +345,18 @@ class KillSwitch:
                     self._run([tool, "-A", CHAIN_NAME, "-d", lan, "-j", "ACCEPT"])
 
         # REJECT everything else (use icmp-host-unreachable for clearer failure mode)
-        reject_opt = (
-            "icmp-host-unreachable" if tool == "iptables" else "icmp6-adm-prohibited"
+        reject_opt = "icmp-host-unreachable" if tool == "iptables" else "icmp6-adm-prohibited"
+        self._run(
+            [
+                tool,
+                "-A",
+                CHAIN_NAME,
+                "-j",
+                "REJECT",
+                "--reject-with",
+                reject_opt,
+            ]
         )
-        self._run([
-            tool, "-A", CHAIN_NAME,
-            "-j", "REJECT", "--reject-with", reject_opt,
-        ])
 
         # Insert jump from OUTPUT to our chain (at top so it runs first).
         # Check if already present; if not, insert at position 1.

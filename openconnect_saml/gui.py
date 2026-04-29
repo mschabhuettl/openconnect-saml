@@ -38,23 +38,34 @@ class ProfileGui:
         frame.rowconfigure(3, weight=1)
 
         ttk.Label(frame, text="Profile").grid(row=0, column=0, sticky="w")
-        self.profile_box = ttk.Combobox(frame, textvariable=self.profile_var, values=names, state="readonly")
+        self.profile_box = ttk.Combobox(
+            frame, textvariable=self.profile_var, values=names, state="readonly"
+        )
         self.profile_box.grid(row=0, column=1, columnspan=3, sticky="ew", padx=(8, 0))
 
         ttk.Label(frame, text="Status").grid(row=1, column=0, sticky="w", pady=(8, 0))
-        ttk.Label(frame, textvariable=self.status_var).grid(row=1, column=1, sticky="w", pady=(8, 0))
+        ttk.Label(frame, textvariable=self.status_var).grid(
+            row=1, column=1, sticky="w", pady=(8, 0)
+        )
 
         self.connect_btn = ttk.Button(frame, text="Connect", command=self.connect)
         self.connect_btn.grid(row=2, column=0, pady=8, sticky="ew")
-        self.disconnect_btn = ttk.Button(frame, text="Disconnect", command=self.disconnect, state="disabled")
+        self.disconnect_btn = ttk.Button(
+            frame, text="Disconnect", command=self.disconnect, state="disabled"
+        )
         self.disconnect_btn.grid(row=2, column=1, pady=8, padx=8, sticky="ew")
-        ttk.Button(frame, text="Refresh", command=self.refresh_profiles).grid(row=2, column=2, pady=8, sticky="ew")
+        ttk.Button(frame, text="Refresh", command=self.refresh_profiles).grid(
+            row=2, column=2, pady=8, sticky="ew"
+        )
 
         self.log = tk.Text(frame, height=16, width=72)
         self.log.grid(row=3, column=0, columnspan=4, sticky="nsew")
         self.log.insert("end", "Select a saved profile and press Connect.\n")
         if not names:
-            self.log.insert("end", "No saved profiles found. Add one with: openconnect-saml profiles add NAME --server HOST\n")
+            self.log.insert(
+                "end",
+                "No saved profiles found. Add one with: openconnect-saml profiles add NAME --server HOST\n",
+            )
             self.connect_btn.configure(state="disabled")
 
         root.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -104,7 +115,9 @@ class ProfileGui:
                 if line == "__PROCESS_EXITED__":
                     self.proc = None
                     self.status_var.set("Disconnected")
-                    self.connect_btn.configure(state="normal" if self.profile_var.get() else "disabled")
+                    self.connect_btn.configure(
+                        state="normal" if self.profile_var.get() else "disabled"
+                    )
                     self.disconnect_btn.configure(state="disabled")
                 else:
                     self.log.insert("end", line)
@@ -120,7 +133,9 @@ class ProfileGui:
 
     def on_close(self):
         if self.proc and self.proc.poll() is None:
-            if not messagebox.askyesno("openconnect-saml", "Disconnect the active VPN process and quit?"):
+            if not messagebox.askyesno(
+                "openconnect-saml", "Disconnect the active VPN process and quit?"
+            ):
                 return
             self.proc.terminate()
         self.root.destroy()

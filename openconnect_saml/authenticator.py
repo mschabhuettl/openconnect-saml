@@ -320,7 +320,9 @@ def parse_auth_request_response(xml, response_url=None):
         raise AuthResponseError(f"Expected auth id 'main', got '{xml.auth.get('id')}'")
 
     try:
-        login_url = _auth_field(xml.auth, "sso-v2-login") or _first_form_action(xml.auth, response_url)
+        login_url = _auth_field(xml.auth, "sso-v2-login") or _first_form_action(
+            xml.auth, response_url
+        )
         login_final_url = _auth_field(xml.auth, "sso-v2-login-final") or login_url
         token_cookie_name = _auth_field(xml.auth, "sso-v2-token-cookie-name") or "webvpn"
         if not login_url:

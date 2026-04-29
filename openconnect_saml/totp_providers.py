@@ -448,9 +448,7 @@ class PassProvider(TotpProvider):
             if "is not in the password store" in lowered or "not found" in lowered:
                 logger.error("pass entry not found", entry=self.entry)
             elif "command not found" in lowered or "usage" in lowered:
-                logger.error(
-                    "pass-otp extension not installed — install 'pass-otp' package"
-                )
+                logger.error("pass-otp extension not installed — install 'pass-otp' package")
             elif "no otp secret" in lowered:
                 logger.error(
                     "pass entry has no OTP secret (needs a totp:// URI)",

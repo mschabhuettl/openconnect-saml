@@ -23,9 +23,13 @@ class TestOnePasswordProvider:
             assert provider.get_totp() is None
 
     def test_successful_totp(self):
-        with patch("openconnect_saml.totp_providers.shutil.which", return_value="/usr/bin/op"), \
-                patch("openconnect_saml.totp_providers.subprocess.run",
-                      return_value=_mk_result(0, "123456\n")) as mock_run:
+        with (
+            patch("openconnect_saml.totp_providers.shutil.which", return_value="/usr/bin/op"),
+            patch(
+                "openconnect_saml.totp_providers.subprocess.run",
+                return_value=_mk_result(0, "123456\n"),
+            ) as mock_run,
+        ):
             provider = OnePasswordProvider(item="my-vpn")
             assert provider.get_totp() == "123456"
             args, kwargs = mock_run.call_args
@@ -35,9 +39,13 @@ class TestOnePasswordProvider:
             assert "--otp" in cmd
 
     def test_with_vault_and_account(self):
-        with patch("openconnect_saml.totp_providers.shutil.which", return_value="/usr/bin/op"), \
-                patch("openconnect_saml.totp_providers.subprocess.run",
-                      return_value=_mk_result(0, "999999\n")) as mock_run:
+        with (
+            patch("openconnect_saml.totp_providers.shutil.which", return_value="/usr/bin/op"),
+            patch(
+                "openconnect_saml.totp_providers.subprocess.run",
+                return_value=_mk_result(0, "999999\n"),
+            ) as mock_run,
+        ):
             provider = OnePasswordProvider(
                 item="my-vpn", vault="Work", account="acme.1password.com"
             )
@@ -49,44 +57,66 @@ class TestOnePasswordProvider:
             assert "acme.1password.com" in cmd
 
     def test_not_signed_in(self, caplog):
-        with patch("openconnect_saml.totp_providers.shutil.which", return_value="/usr/bin/op"), \
-                patch("openconnect_saml.totp_providers.subprocess.run",
-                      return_value=_mk_result(1, "", "[ERROR] 2023/01/01 00:00:00 not signed in")):
+        with (
+            patch("openconnect_saml.totp_providers.shutil.which", return_value="/usr/bin/op"),
+            patch(
+                "openconnect_saml.totp_providers.subprocess.run",
+                return_value=_mk_result(1, "", "[ERROR] 2023/01/01 00:00:00 not signed in"),
+            ),
+        ):
             provider = OnePasswordProvider(item="my-vpn")
             assert provider.get_totp() is None
 
     def test_no_such_item(self):
-        with patch("openconnect_saml.totp_providers.shutil.which", return_value="/usr/bin/op"), \
-                patch("openconnect_saml.totp_providers.subprocess.run",
-                      return_value=_mk_result(1, "", "no such item")):
+        with (
+            patch("openconnect_saml.totp_providers.shutil.which", return_value="/usr/bin/op"),
+            patch(
+                "openconnect_saml.totp_providers.subprocess.run",
+                return_value=_mk_result(1, "", "no such item"),
+            ),
+        ):
             provider = OnePasswordProvider(item="missing")
             assert provider.get_totp() is None
 
     def test_no_otp_field(self):
-        with patch("openconnect_saml.totp_providers.shutil.which", return_value="/usr/bin/op"), \
-                patch("openconnect_saml.totp_providers.subprocess.run",
-                      return_value=_mk_result(1, "",
-                                              "this item does not have a one-time password")):
+        with (
+            patch("openconnect_saml.totp_providers.shutil.which", return_value="/usr/bin/op"),
+            patch(
+                "openconnect_saml.totp_providers.subprocess.run",
+                return_value=_mk_result(1, "", "this item does not have a one-time password"),
+            ),
+        ):
             provider = OnePasswordProvider(item="no-otp")
             assert provider.get_totp() is None
 
     def test_empty_output_is_treated_as_failure(self):
-        with patch("openconnect_saml.totp_providers.shutil.which", return_value="/usr/bin/op"), \
-                patch("openconnect_saml.totp_providers.subprocess.run",
-                      return_value=_mk_result(0, "", "")):
+        with (
+            patch("openconnect_saml.totp_providers.shutil.which", return_value="/usr/bin/op"),
+            patch(
+                "openconnect_saml.totp_providers.subprocess.run", return_value=_mk_result(0, "", "")
+            ),
+        ):
             provider = OnePasswordProvider(item="my-vpn")
             assert provider.get_totp() is None
 
     def test_timeout(self):
-        with patch("openconnect_saml.totp_providers.shutil.which", return_value="/usr/bin/op"), \
-                patch("openconnect_saml.totp_providers.subprocess.run",
-                      side_effect=subprocess.TimeoutExpired(cmd="op", timeout=10)):
+        with (
+            patch("openconnect_saml.totp_providers.shutil.which", return_value="/usr/bin/op"),
+            patch(
+                "openconnect_saml.totp_providers.subprocess.run",
+                side_effect=subprocess.TimeoutExpired(cmd="op", timeout=10),
+            ),
+        ):
             provider = OnePasswordProvider(item="my-vpn")
             assert provider.get_totp() is None
 
     def test_file_not_found(self):
-        with patch("openconnect_saml.totp_providers.shutil.which", return_value="/usr/bin/op"), \
-                patch("openconnect_saml.totp_providers.subprocess.run",
-                      side_effect=FileNotFoundError("op")):
+        with (
+            patch("openconnect_saml.totp_providers.shutil.which", return_value="/usr/bin/op"),
+            patch(
+                "openconnect_saml.totp_providers.subprocess.run",
+                side_effect=FileNotFoundError("op"),
+            ),
+        ):
             provider = OnePasswordProvider(item="my-vpn")
             assert provider.get_totp() is None

@@ -207,9 +207,7 @@ def _show_profile(args):
         creds = data["credentials"]
         for key in list(creds):
             if (
-                "password" in key.lower()
-                or "token" in key.lower()
-                or "secret" in key.lower()
+                "password" in key.lower() or "token" in key.lower() or "secret" in key.lower()
             ) and creds[key]:
                 creds[key] = "***"
     if getattr(args, "json", False):

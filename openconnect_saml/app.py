@@ -296,9 +296,7 @@ def _run_with_reconnect(
                     max_retries=max_retries,
                 )
                 if notify:
-                    notify_error(
-                        selected_profile.vpn_url, f"Max retries ({max_retries}) reached"
-                    )
+                    notify_error(selected_profile.vpn_url, f"Max retries ({max_retries}) reached")
                 if tracker:
                     tracker.error(f"max retries ({max_retries}) reached")
                 handle_disconnect(cfg.on_disconnect)
@@ -342,8 +340,10 @@ def _run_with_reconnect(
                 continue
     finally:
         # Only clear transient kill-switch — persistent ones stay.
-        if killswitch and getattr(args, "kill_switch", False) and not (
-            cfg.kill_switch and cfg.kill_switch.enabled
+        if (
+            killswitch
+            and getattr(args, "kill_switch", False)
+            and not (cfg.kill_switch and cfg.kill_switch.enabled)
         ):
             try:
                 killswitch.disable()
@@ -393,8 +393,8 @@ async def _run(args, cfg):
         cfg.credentials = credentials
 
     # Determine TOTP source: CLI > config > default ("local")
-    totp_source = (
-        getattr(args, "totp_source", None) or (credentials.totp_source if credentials else "local")
+    totp_source = getattr(args, "totp_source", None) or (
+        credentials.totp_source if credentials else "local"
     )
 
     if credentials and totp_source == "bitwarden":
@@ -421,8 +421,7 @@ async def _run(args, cfg):
             op_account = op_account or cfg.onepassword.account or None
         if not op_item:
             logger.error(
-                "1Password TOTP source requires --1password-item "
-                "(or [1password] config section)"
+                "1Password TOTP source requires --1password-item (or [1password] config section)"
             )
             raise ValueError("Missing 1Password configuration", 23)
         credentials.totp_source = "1password"
@@ -439,9 +438,7 @@ async def _run(args, cfg):
         if cfg.pass_:
             pass_entry = pass_entry or cfg.pass_.entry
         if not pass_entry:
-            logger.error(
-                "pass TOTP source requires --pass-entry (or [pass] config section)"
-            )
+            logger.error("pass TOTP source requires --pass-entry (or [pass] config section)")
             raise ValueError("Missing pass configuration", 24)
         credentials.totp_source = "pass"
         credentials.set_totp_provider(PassProvider(entry=pass_entry))

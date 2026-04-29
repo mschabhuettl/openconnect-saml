@@ -209,8 +209,16 @@ def _check_python_deps() -> list[CheckResult]:
 def _check_optional_deps() -> list[CheckResult]:
     results: list[CheckResult] = []
     groups = [
-        ("GUI browser (PyQt6)", ["PyQt6", "PyQt6.QtWebEngineCore"], "pip install 'openconnect-saml[gui]'"),
-        ("Chrome (Playwright)", ["playwright"], "pip install 'openconnect-saml[chrome]' && playwright install chromium"),
+        (
+            "GUI browser (PyQt6)",
+            ["PyQt6", "PyQt6.QtWebEngineCore"],
+            "pip install 'openconnect-saml[gui]'",
+        ),
+        (
+            "Chrome (Playwright)",
+            ["playwright"],
+            "pip install 'openconnect-saml[chrome]' && playwright install chromium",
+        ),
         ("FIDO2/YubiKey", ["fido2"], "pip install 'openconnect-saml[fido2]'"),
         ("Status TUI (rich)", ["rich"], "pip install 'openconnect-saml[tui]'"),
     ]
@@ -226,15 +234,14 @@ def _check_optional_deps() -> list[CheckResult]:
         if len(found) == len(modules):
             results.append(CheckResult(label, STATUS_OK, ", ".join(found)))
         else:
-            results.append(
-                CheckResult(label, STATUS_SKIP, "not installed", hint=hint)
-            )
+            results.append(CheckResult(label, STATUS_SKIP, "not installed", hint=hint))
     return results
 
 
 def _check_keyring_backend() -> CheckResult:
     try:
         import keyring as kr
+
         backend = kr.get_keyring()
         name = type(backend).__name__
         module = type(backend).__module__
@@ -253,6 +260,7 @@ def _check_keyring_backend() -> CheckResult:
 def _check_config_dir() -> CheckResult:
     try:
         import xdg.BaseDirectory
+
         path = xdg.BaseDirectory.load_first_config("openconnect-saml")
         if not path:
             return CheckResult(
@@ -280,9 +288,7 @@ def _check_config_dir() -> CheckResult:
                 )
         return CheckResult("Config directory", STATUS_OK, str(cfg))
     except ImportError:
-        return CheckResult(
-            "Config directory", STATUS_FAIL, "pyxdg not installed"
-        )
+        return CheckResult("Config directory", STATUS_FAIL, "pyxdg not installed")
 
 
 def _check_dns_resolution(host: str | None) -> CheckResult:
@@ -360,6 +366,7 @@ def _check_killswitch_state() -> CheckResult:
         )
     try:
         from openconnect_saml.killswitch import KillSwitch, KillSwitchConfig
+
         ks = KillSwitch(KillSwitchConfig())
         if ks.is_active():
             return CheckResult(
@@ -440,7 +447,9 @@ def handle_doctor_command(args) -> int:
     skip_count = sum(1 for r in results if r.status == STATUS_SKIP)
 
     print()
-    print(f"Summary: {ok_count} OK · {warn_count} warning · {fail_count} failed · {skip_count} skipped")
+    print(
+        f"Summary: {ok_count} OK · {warn_count} warning · {fail_count} failed · {skip_count} skipped"
+    )
 
     if fail_count > 0:
         return 1

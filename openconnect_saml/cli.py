@@ -235,9 +235,7 @@ def _add_connection_args(parser):
     )
 
     connection_group = parser.add_argument_group("Connection options")
-    connection_group.add_argument(
-        "--no-sudo", dest="no_sudo", action="store_true", default=False
-    )
+    connection_group.add_argument("--no-sudo", dest="no_sudo", action="store_true", default=False)
     connection_group.add_argument("--csd-wrapper", dest="csd_wrapper", default=None)
     connection_group.add_argument(
         "--ssl-legacy", dest="ssl_legacy", action="store_true", default=False
@@ -432,9 +430,7 @@ def create_service_argparser():
     install_p = subparsers.add_parser("install", help="Install systemd unit")
     install_p.add_argument("-s", "--server", required=True)
     install_p.add_argument("-u", "--user")
-    install_p.add_argument(
-        "--browser", choices=["headless", "chrome", "qt"], default="headless"
-    )
+    install_p.add_argument("--browser", choices=["headless", "chrome", "qt"], default="headless")
     install_p.add_argument("--max-retries", type=int, default=None)
 
     uninstall_p = subparsers.add_parser("uninstall", help="Remove systemd unit")
@@ -456,8 +452,6 @@ def create_service_argparser():
     return parser
 
 
-
-
 def _recover_connect_options_from_remainder(args):
     """Recover openconnect-saml options swallowed after `connect PROFILE`.
 
@@ -474,7 +468,11 @@ def _recover_connect_options_from_remainder(args):
     i = 0
     while i < len(remainder):
         token = remainder[i]
-        if token == "--browser" and i + 1 < len(remainder) and remainder[i + 1] in {"qt", "chrome", "headless"}:
+        if (
+            token == "--browser"
+            and i + 1 < len(remainder)
+            and remainder[i + 1] in {"qt", "chrome", "headless"}
+        ):
             args.browser = remainder[i + 1]
             if args.browser == "headless":
                 args.headless = True
@@ -496,6 +494,7 @@ def _recover_connect_options_from_remainder(args):
         cleaned.append(token)
         i += 1
     args.openconnect_args = cleaned
+
 
 def _handle_profiles_command(args):
     from openconnect_saml.profiles import handle_profiles_command
@@ -608,8 +607,17 @@ def _is_legacy_invocation(argv):
     if not argv:
         return True
     known_subcommands = {
-        "connect", "profiles", "status", "completion", "service", "setup",
-        "config", "doctor", "history", "killswitch", "gui",
+        "connect",
+        "profiles",
+        "status",
+        "completion",
+        "service",
+        "setup",
+        "config",
+        "doctor",
+        "history",
+        "killswitch",
+        "gui",
     }
     first = argv[0]
     return first.startswith("-") or first not in known_subcommands

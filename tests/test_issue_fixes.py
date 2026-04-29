@@ -21,7 +21,7 @@ def test_connect_profile_recovers_browser_after_profile_name():
 
 def test_parse_auth_request_finds_namespaced_sso_fields():
     xml = objectify.fromstring(
-        b'''<config-auth type="auth-request" xmlns:c="urn:test">
+        b"""<config-auth type="auth-request" xmlns:c="urn:test">
           <opaque>abc</opaque>
           <auth id="main">
             <title>Login</title>
@@ -29,10 +29,12 @@ def test_parse_auth_request_finds_namespaced_sso_fields():
             <c:sso-v2-login-final>https://vpn.example.com/+CSCOE+/saml_ac_login.html</c:sso-v2-login-final>
             <c:sso-v2-token-cookie-name>acSamlv2Token</c:sso-v2-token-cookie-name>
           </auth>
-        </config-auth>'''
+        </config-auth>"""
     )
 
-    resp = parse_auth_request_response(xml, response_url="https://vpn.example.com/+CSCOE+/saml_ac_login.html")
+    resp = parse_auth_request_response(
+        xml, response_url="https://vpn.example.com/+CSCOE+/saml_ac_login.html"
+    )
 
     assert resp.login_url == "https://vpn.example.com/+CSCOE+/saml/sp/login"
     assert resp.login_final_url == "https://vpn.example.com/+CSCOE+/saml_ac_login.html"
@@ -41,16 +43,18 @@ def test_parse_auth_request_finds_namespaced_sso_fields():
 
 def test_parse_auth_request_falls_back_to_form_action_for_newer_duo_flow():
     xml = objectify.fromstring(
-        b'''<config-auth type="auth-request">
+        b"""<config-auth type="auth-request">
           <opaque>abc</opaque>
           <auth id="main">
             <title>Duo</title>
             <form action="/+CSCOE+/saml_ac_login.html" method="post" />
           </auth>
-        </config-auth>'''
+        </config-auth>"""
     )
 
-    resp = parse_auth_request_response(xml, response_url="https://vpn.example.com/+CSCOE+/logon.html")
+    resp = parse_auth_request_response(
+        xml, response_url="https://vpn.example.com/+CSCOE+/logon.html"
+    )
 
     assert resp.login_url == "https://vpn.example.com/+CSCOE+/saml_ac_login.html"
     assert resp.login_final_url == resp.login_url
