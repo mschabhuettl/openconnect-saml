@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.5] – 2026-04-29
+
+### Changed
+
+- **Documentation overhaul** — the previous 750-line README.md is now
+  a 100-line landing page that links into a topic-per-file `docs/`
+  reference. Eleven new files cover installation, browser backends,
+  authentication / TOTP / FIDO2, profiles, networking (split-tunnel +
+  kill-switch), operations (reconnect / systemd / status / history /
+  notifications / hooks), configuration, diagnostics, the full CLI
+  reference, contributor setup, and migration guides. No content was
+  dropped; existing flows are easier to find. See [docs/README.md](docs/README.md)
+  for the index.
+
+### Notes
+
+- Pure documentation release. No code, behaviour, or CLI surface
+  changes; existing scripts, configs, and profiles continue to work
+  unchanged.
+
 ## [0.8.4] – 2026-04-29
 
 ### Added
