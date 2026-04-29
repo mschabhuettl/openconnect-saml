@@ -22,9 +22,21 @@ from openconnect_saml.authenticator import (
     AuthResponseError,
 )
 from openconnect_saml.browser import Terminated
-from openconnect_saml.config import BitwardenConfig, Credentials, TwoFAuthConfig
+from openconnect_saml.config import (
+    BitwardenConfig,
+    Credentials,
+    OnePasswordConfig,
+    PassConfig,
+    TwoFAuthConfig,
+)
+from openconnect_saml.history import ConnectionTracker
 from openconnect_saml.profile import get_profiles
-from openconnect_saml.totp_providers import BitwardenProvider, TwoFAuthProvider
+from openconnect_saml.totp_providers import (
+    BitwardenProvider,
+    OnePasswordProvider,
+    PassProvider,
+    TwoFAuthProvider,
+)
 
 logger = structlog.get_logger()
 
@@ -48,7 +60,8 @@ def run(args):
         return 2
     except AuthResponseError as exc:
         logger.error(
-            f'Required attributes not found in response ("{exc}", does this endpoint do SSO?), exiting'
+            f'Required attributes not found in response ("{exc}", '
+            "does this endpoint do SSO?), exiting"
         )
         return 3
     except HTTPError as exc:
@@ -78,7 +91,6 @@ def run(args):
     routes = getattr(args, "routes", None) or []
     no_routes = getattr(args, "no_routes", None) or []
 
-    # Check profile routes if available
     profile_name = getattr(args, "profile_name", None)
     if profile_name:
         prof = cfg.get_profile(profile_name)
@@ -87,6 +99,26 @@ def run(args):
                 routes = prof.routes
             if not no_routes and prof.no_routes:
                 no_routes = prof.no_routes
+
+    # Kill-switch — resolve CLI > config
+    ks_cli_enabled = getattr(args, "kill_switch", False)
+    ks_cfg = cfg.kill_switch
+    ks_persisted = ks_cfg.enabled if ks_cfg else False
+    killswitch_enabled = ks_cli_enabled or ks_persisted
+    killswitch = None
+    if killswitch_enabled:
+        killswitch = _setup_killswitch(args, cfg, selected_profile)
+
+    # History tracker
+    history_enabled = cfg.connection_history and not getattr(args, "no_history", False)
+    tracker = None
+    if history_enabled:
+        username = args.user or (cfg.credentials.username if cfg.credentials else "")
+        tracker = ConnectionTracker(
+            server=selected_profile.vpn_url,
+            profile=profile_name or "default",
+            user=username,
+        )
 
     if reconnect:
         return _run_with_reconnect(
@@ -98,12 +130,17 @@ def run(args):
             notify=notify,
             routes=routes,
             no_routes=no_routes,
+            killswitch=killswitch,
+            tracker=tracker,
         )
 
     if notify:
         from openconnect_saml.notify import notify_connected
 
         notify_connected(selected_profile.vpn_url)
+
+    if tracker:
+        tracker.start()
 
     try:
         rc = run_openconnect(
@@ -128,7 +165,61 @@ def run(args):
             from openconnect_saml.notify import notify_disconnected
 
             notify_disconnected(selected_profile.vpn_url)
+        if tracker:
+            tracker.stop()
+        # Only auto-disable kill-switch if it was a CLI-session enablement.
+        # If the user persisted it in config, keep it active.
+        if killswitch and ks_cli_enabled and not ks_persisted:
+            try:
+                killswitch.disable()
+            except Exception as exc:
+                logger.warning("Could not disable kill-switch on exit", error=str(exc))
         handle_disconnect(cfg.on_disconnect)
+
+
+def _setup_killswitch(args, cfg, selected_profile):
+    """Build a KillSwitch instance and enable it. Returns the instance or None."""
+    try:
+        from openconnect_saml.killswitch import (
+            KillSwitch,
+            KillSwitchConfig,
+            KillSwitchError,
+            KillSwitchNotSupported,
+        )
+    except ImportError as exc:
+        logger.error("Cannot import kill-switch module", error=str(exc))
+        return None
+
+    dns_servers: list[str] = list(getattr(args, "ks_allow_dns", None) or [])
+    if cfg.kill_switch and not dns_servers:
+        dns_servers = list(cfg.kill_switch.dns_servers)
+    allow_lan = getattr(args, "ks_allow_lan", False) or (
+        cfg.kill_switch.allow_lan if cfg.kill_switch else False
+    )
+    ipv6 = not getattr(args, "ks_no_ipv6", False)
+    if cfg.kill_switch:
+        ipv6 = ipv6 and cfg.kill_switch.ipv6
+
+    ks_config = KillSwitchConfig(
+        server_host=selected_profile.vpn_url,
+        server_port=getattr(args, "ks_port", 443) or 443,
+        dns_servers=dns_servers,
+        allow_lan=allow_lan,
+        ipv6=ipv6,
+        sudo=getattr(args, "ks_sudo", None),
+    )
+
+    try:
+        ks = KillSwitch(ks_config)
+        ks.enable()
+        logger.info("Kill-switch active — traffic locked to VPN")
+        return ks
+    except KillSwitchNotSupported as exc:
+        logger.warning("Kill-switch not supported on this platform", error=str(exc))
+        return None
+    except KillSwitchError as exc:
+        logger.error("Kill-switch setup failed", error=str(exc))
+        return None
 
 
 # Backoff schedule for reconnection (seconds)
@@ -144,23 +235,10 @@ def _run_with_reconnect(
     notify=False,
     routes=None,
     no_routes=None,
+    killswitch=None,
+    tracker=None,
 ):
-    """Run openconnect with automatic reconnection on failure.
-
-    Re-authenticates and reconnects when the VPN process exits unexpectedly.
-    Uses exponential backoff: 30s, 60s, 120s, then 300s.
-
-    Parameters
-    ----------
-    max_retries : int or None
-        Maximum reconnection attempts. None means unlimited.
-    notify : bool
-        Whether to send desktop notifications.
-    routes : list or None
-        Split-tunnel include routes.
-    no_routes : list or None
-        Split-tunnel exclude routes.
-    """
+    """Run openconnect with automatic reconnection on failure."""
     import time
 
     if notify:
@@ -173,78 +251,104 @@ def _run_with_reconnect(
 
         notify_connected(selected_profile.vpn_url)
 
+    if tracker:
+        tracker.start()
+
     attempt = 0
-    while True:
-        try:
-            rc = run_openconnect(
-                auth_response,
-                selected_profile,
-                args.proxy,
-                args.ac_version,
-                args.openconnect_args,
-                no_sudo=getattr(args, "no_sudo", False),
-                csd_wrapper=getattr(args, "csd_wrapper", None),
-                on_connect=cfg.on_connect,
-                routes=routes,
-                no_routes=no_routes,
-                useragent=getattr(args, "useragent", None),
+    try:
+        while True:
+            try:
+                rc = run_openconnect(
+                    auth_response,
+                    selected_profile,
+                    args.proxy,
+                    args.ac_version,
+                    args.openconnect_args,
+                    no_sudo=getattr(args, "no_sudo", False),
+                    csd_wrapper=getattr(args, "csd_wrapper", None),
+                    on_connect=cfg.on_connect,
+                    routes=routes,
+                    no_routes=no_routes,
+                    useragent=getattr(args, "useragent", None),
+                )
+            except KeyboardInterrupt:
+                logger.warn("CTRL-C pressed, stopping reconnect loop")
+                if notify:
+                    notify_disconnected(selected_profile.vpn_url)
+                if tracker:
+                    tracker.stop("user interrupted")
+                handle_disconnect(cfg.on_disconnect)
+                return 0
+
+            if rc == 0:
+                if notify:
+                    notify_disconnected(selected_profile.vpn_url)
+                if tracker:
+                    tracker.stop("clean exit")
+                handle_disconnect(cfg.on_disconnect)
+                return 0
+
+            attempt += 1
+            if max_retries is not None and attempt >= max_retries:
+                logger.error(
+                    "Max reconnection retries reached",
+                    attempts=attempt,
+                    max_retries=max_retries,
+                )
+                if notify:
+                    notify_error(
+                        selected_profile.vpn_url, f"Max retries ({max_retries}) reached"
+                    )
+                if tracker:
+                    tracker.error(f"max retries ({max_retries}) reached")
+                handle_disconnect(cfg.on_disconnect)
+                return rc
+
+            backoff_idx = min(attempt - 1, len(RECONNECT_BACKOFF) - 1)
+            delay = RECONNECT_BACKOFF[backoff_idx]
+            logger.warn(
+                "VPN connection dropped, reconnecting",
+                attempt=attempt,
+                delay=delay,
+                exit_code=rc,
             )
-        except KeyboardInterrupt:
-            logger.warn("CTRL-C pressed, stopping reconnect loop")
+
             if notify:
-                notify_disconnected(selected_profile.vpn_url)
-            handle_disconnect(cfg.on_disconnect)
-            return 0
+                notify_reconnecting(selected_profile.vpn_url, attempt, delay)
+            if tracker:
+                tracker.reconnecting(attempt, delay)
 
-        if rc == 0:
-            # Clean exit
-            if notify:
-                notify_disconnected(selected_profile.vpn_url)
-            handle_disconnect(cfg.on_disconnect)
-            return 0
+            try:
+                time.sleep(delay)
+            except KeyboardInterrupt:
+                logger.warn("CTRL-C pressed during backoff, exiting")
+                if tracker:
+                    tracker.stop("user interrupted during backoff")
+                handle_disconnect(cfg.on_disconnect)
+                return 0
 
-        attempt += 1
-        if max_retries is not None and attempt >= max_retries:
-            logger.error(
-                "Max reconnection retries reached",
-                attempts=attempt,
-                max_retries=max_retries,
-            )
-            if notify:
-                notify_error(selected_profile.vpn_url, f"Max retries ({max_retries}) reached")
-            handle_disconnect(cfg.on_disconnect)
-            return rc
-
-        backoff_idx = min(attempt - 1, len(RECONNECT_BACKOFF) - 1)
-        delay = RECONNECT_BACKOFF[backoff_idx]
-        logger.warn(
-            "VPN connection dropped, reconnecting",
-            attempt=attempt,
-            delay=delay,
-            exit_code=rc,
-        )
-
-        if notify:
-            notify_reconnecting(selected_profile.vpn_url, attempt, delay)
-
-        try:
-            time.sleep(delay)
-        except KeyboardInterrupt:
-            logger.warn("CTRL-C pressed during backoff, exiting")
-            handle_disconnect(cfg.on_disconnect)
-            return 0
-
-        # Re-authenticate
-        try:
-            auth_response, selected_profile = asyncio.run(_run(args, cfg))
-        except KeyboardInterrupt:
-            logger.warn("CTRL-C pressed during re-authentication, exiting")
-            handle_disconnect(cfg.on_disconnect)
-            return 0
-        except Exception as exc:
-            logger.error("Re-authentication failed", error=str(exc))
-            # Continue with backoff
-            continue
+            try:
+                auth_response, selected_profile = asyncio.run(_run(args, cfg))
+            except KeyboardInterrupt:
+                logger.warn("CTRL-C pressed during re-authentication, exiting")
+                if tracker:
+                    tracker.stop("user interrupted during re-auth")
+                handle_disconnect(cfg.on_disconnect)
+                return 0
+            except Exception as exc:
+                logger.error("Re-authentication failed", error=str(exc))
+                if tracker:
+                    tracker.error(f"re-auth failed: {exc}")
+                continue
+    finally:
+        # Only clear transient kill-switch — persistent ones stay.
+        if killswitch and getattr(args, "kill_switch", False) and not (
+            cfg.kill_switch and cfg.kill_switch.enabled
+        ):
+            try:
+                killswitch.disable()
+            except Exception as exc:
+                logger.warning("Could not disable kill-switch on exit", error=str(exc))
 
 
 def configure_logger(logger, level):
@@ -290,47 +394,76 @@ async def _run(args, cfg):
 
     # Determine TOTP source: CLI > config > default ("local")
     totp_source = (
-        getattr(args, "totp_source", None) or credentials.totp_source if credentials else "local"
+        getattr(args, "totp_source", None) or (credentials.totp_source if credentials else "local")
     )
 
     if credentials and totp_source == "bitwarden":
-        # Build Bitwarden config from CLI flags or config file
         bw_item_id = getattr(args, "bw_item_id", None)
-
         if cfg.bitwarden:
             bw_item_id = bw_item_id or cfg.bitwarden.item_id
-
         if not bw_item_id:
             logger.error(
                 "Bitwarden TOTP source requires --bw-item-id (or [bitwarden] config section)"
             )
             raise ValueError("Missing Bitwarden configuration", 22)
-
         credentials.totp_source = "bitwarden"
         credentials.set_totp_provider(BitwardenProvider(item_id=bw_item_id))
-        # Persist Bitwarden config
         cfg.bitwarden = BitwardenConfig(item_id=bw_item_id)
         logger.info("Using Bitwarden TOTP provider")
+
+    elif credentials and totp_source == "1password":
+        op_item = getattr(args, "op_item", None)
+        op_vault = getattr(args, "op_vault", None)
+        op_account = getattr(args, "op_account", None)
+        if cfg.onepassword:
+            op_item = op_item or cfg.onepassword.item
+            op_vault = op_vault or cfg.onepassword.vault or None
+            op_account = op_account or cfg.onepassword.account or None
+        if not op_item:
+            logger.error(
+                "1Password TOTP source requires --1password-item "
+                "(or [1password] config section)"
+            )
+            raise ValueError("Missing 1Password configuration", 23)
+        credentials.totp_source = "1password"
+        credentials.set_totp_provider(
+            OnePasswordProvider(item=op_item, vault=op_vault, account=op_account)
+        )
+        cfg.onepassword = OnePasswordConfig(
+            item=op_item, vault=op_vault or "", account=op_account or ""
+        )
+        logger.info("Using 1Password TOTP provider")
+
+    elif credentials and totp_source == "pass":
+        pass_entry = getattr(args, "pass_entry", None)
+        if cfg.pass_:
+            pass_entry = pass_entry or cfg.pass_.entry
+        if not pass_entry:
+            logger.error(
+                "pass TOTP source requires --pass-entry (or [pass] config section)"
+            )
+            raise ValueError("Missing pass configuration", 24)
+        credentials.totp_source = "pass"
+        credentials.set_totp_provider(PassProvider(entry=pass_entry))
+        cfg.pass_ = PassConfig(entry=pass_entry)
+        logger.info("Using pass TOTP provider")
+
     elif credentials and totp_source == "2fauth":
-        # Build 2FAuth config from CLI flags or config file
         twofauth_url = getattr(args, "twofauth_url", None)
         twofauth_token = getattr(args, "twofauth_token", None)
         twofauth_account_id = getattr(args, "twofauth_account_id", None)
-
         if cfg.twofauth:
             twofauth_url = twofauth_url or cfg.twofauth.url
             twofauth_token = twofauth_token or cfg.twofauth.token
             twofauth_account_id = (
                 twofauth_account_id if twofauth_account_id is not None else cfg.twofauth.account_id
             )
-
         if not all([twofauth_url, twofauth_token, twofauth_account_id]):
             logger.error(
                 "2FAuth TOTP source requires --2fauth-url, --2fauth-token, "
                 "and --2fauth-account-id (or [2fauth] config section)"
             )
             raise ValueError("Missing 2FAuth configuration", 21)
-
         credentials.totp_source = "2fauth"
         credentials.set_totp_provider(
             TwoFAuthProvider(
@@ -339,13 +472,11 @@ async def _run(args, cfg):
                 account_id=twofauth_account_id,
             )
         )
-        # Persist 2FAuth config
         cfg.twofauth = TwoFAuthConfig(
-            url=twofauth_url,
-            token=twofauth_token,
-            account_id=twofauth_account_id,
+            url=twofauth_url, token=twofauth_token, account_id=twofauth_account_id
         )
         logger.info("Using 2FAuth TOTP provider")
+
     elif credentials and not credentials.totp:
         credentials.totp = getpass.getpass(
             prompt=f"TOTP secret (leave blank if not required) ({args.user}): "
@@ -358,7 +489,6 @@ async def _run(args, cfg):
         profiles = get_profiles(Path(args.profile_path))
         if not profiles:
             raise ValueError("No profile found", 17)
-
         selected_profile = await select_profile(profiles)
         if not selected_profile:
             raise ValueError("No profile selected", 18)
@@ -379,10 +509,8 @@ async def _run(args, cfg):
     else:
         display_mode = config.DisplayMode[args.browser_display_mode.upper()]
 
-    # Resolve timeout: CLI > config > default
     timeout = getattr(args, "timeout", None) or cfg.timeout or 30
 
-    # Resolve window size: CLI > config > default
     window_size = getattr(args, "window_size", None)
     if window_size:
         try:
@@ -424,12 +552,11 @@ async def select_profile(profile_list):
         title="Select AnyConnect profile",
         text=HTML(
             "The following AnyConnect profiles are detected.\n"
-            "The selection will be <b>saved</b> and not asked again unless the <pre>--profile-selector</pre> command line option is used"
+            "The selection will be <b>saved</b> and not asked again unless the "
+            "<pre>--profile-selector</pre> command line option is used"
         ),
         values=[(p, p.name) for i, p in enumerate(profile_list)],
     ).run_async()
-    # Somehow prompt_toolkit sets up a bogus signal handler upon exit
-    # TODO: Report this issue upstream
     if hasattr(signal, "SIGWINCH"):
         asyncio.get_running_loop().remove_signal_handler(signal.SIGWINCH)
     if not selection:
@@ -513,7 +640,6 @@ def run_openconnect(
     if csd_wrapper:
         openconnect_args.extend(["--csd-wrapper", csd_wrapper])
 
-    # Split-tunnel routes
     if routes:
         for route in routes:
             openconnect_args.extend(["--route", route])
@@ -532,27 +658,18 @@ def run_openconnect(
     logger.debug("Starting OpenConnect", command_line=command_line)
 
     if on_connect:
-        # Run on-connect script via openconnect's --script mechanism would
-        # conflict with user-provided scripts, so we run it separately after
-        # openconnect is started. Use Popen for non-blocking openconnect.
         proc = subprocess.Popen(command_line, stdin=subprocess.PIPE)  # nosec
         proc.stdin.write(session_token)
         proc.stdin.close()
         handle_connect(on_connect)
         return proc.wait()
-    else:
-        return subprocess.run(command_line, input=session_token).returncode  # nosec
+    return subprocess.run(command_line, input=session_token).returncode  # nosec
 
 
 def _validate_hook_command(command):
-    """Basic validation for on-connect/on-disconnect hook commands.
-
-    Rejects commands containing shell metacharacters that could indicate
-    injection attempts. Users who need complex commands should use a script file.
-    """
+    """Basic validation for on-connect/on-disconnect hook commands."""
     if not command:
         return True
-    # Allow paths to scripts and simple commands; warn on suspicious patterns
     suspicious = ["`", "$(", "${", "||", "&&", ";", "\n", "|"]
     for pattern in suspicious:
         if pattern in command:

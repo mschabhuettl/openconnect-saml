@@ -1,145 +1,87 @@
 # Changelog
 
-All notable changes to this project will be documented here.
+All notable changes to this project will be documented in this file.
 
-Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
----
-
-## [0.6.0] - 2026-03-31
+## [0.8.0] – 2026-04-17
 
 ### Added
-- **Split-tunnel routing** — include/exclude specific subnets from the VPN tunnel
-  - CLI: `--route 10.0.0.0/8` and `--no-route 192.168.0.0/16` (repeatable)
-  - Config: `routes` and `no_routes` arrays in profile sections
-  - Routes are passed directly as openconnect `--route` / `--no-route` arguments
-- **Bitwarden TOTP provider** — fetch TOTP codes from Bitwarden CLI (`bw`)
-  - Config: `totp_source = "bitwarden"` with `[bitwarden]` section (`item_id`)
-  - CLI: `--totp-source bitwarden --bw-item-id <uuid>`
-  - Supports `BW_SESSION` environment variable for unlocked vaults
-- **Desktop notifications** — system notifications for VPN events
-  - Events: Connected, Disconnected, Reconnecting, Error
-  - Linux: `notify-send` (libnotify), macOS: `osascript`, fallback: terminal bell
-  - CLI: `--notify` flag, Config: `notifications = true`
-- **Interactive setup wizard** — `openconnect-saml setup`
-  - Guides through: server, username, TOTP source, browser mode, auto-reconnect, notifications
-  - Supports all TOTP providers (local, 2FAuth, Bitwarden)
-  - Creates named profiles with one command
-- 71 new tests (344 total)
+
+- **1Password TOTP provider** — new `--totp-source 1password` that delegates
+  OTP generation to the `op` CLI. New flags: `--1password-item`,
+  `--1password-vault`, `--1password-account`. New `[1password]` config
+  section with `item`, `vault`, `account` keys.
+- **pass (password-store) TOTP provider** — new `--totp-source pass` using
+  the `pass otp` extension. New flag `--pass-entry`; new `[pass]` config
+  section with an `entry` key. Requires `pass-otp` to be installed.
+- **Kill-switch** (Linux / iptables) — a new `killswitch` subcommand with
+  `enable`, `disable`, and `status` actions. Installs a dedicated chain
+  (`OPENCONNECT_SAML_KILLSWITCH`) that allows only loopback, the VPN server
+  IP, configured DNS resolvers, and output on `tun*`/`utun*`/`ppp*`
+  interfaces. Also reachable as a one-shot CLI flag: `--kill-switch`
+  (alongside `--ks-allow-dns`, `--ks-allow-lan`, `--ks-no-ipv6`,
+  `--ks-port`, `--ks-sudo`). Persistent configuration via
+  `[kill_switch]` section.
+- **Profile export / import / rename / show** — export a single profile or
+  all profiles as JSON, with secrets stripped (`password`, `totp`,
+  `totp_secret`, 2fauth `token`); import accepts single-profile or
+  multi-profile payloads, supports `--as <name>` renaming and `--force`
+  overwrite. New `profiles rename <old> <new>` and
+  `profiles show <name> [--json]` commands.
+- **`config` subcommand** — `config path` prints the config file path,
+  `config show [--json]` prints the current configuration with secrets
+  redacted, `config validate` performs schema and semantic checks (TOML
+  syntax, profile `server` required, `active_profile` existence, missing
+  `[2fauth]`/`[bitwarden]` sections for profiles that reference them,
+  CIDR sanity on `routes`/`no_routes`, file-permission check), and
+  `config edit` opens the file in `$EDITOR`.
+- **`doctor` subcommand** — one-shot system diagnostics: Python version,
+  `openconnect` binary presence, sudo/doas, `/dev/net/tun`, core and
+  optional Python dependencies, keyring backend, config directory
+  permissions, DNS resolution and TCP reachability of an optional
+  `--server`, and whether the kill-switch is currently active.
+- **Connection history** — every connect / disconnect / reconnect / error
+  event is logged to `$XDG_STATE_HOME/openconnect-saml/history.jsonl`
+  (owner-read 0o600, rotated at 512 KiB). New `history` subcommand with
+  `show [--limit N] [--json]`, `clear`, and `path` actions. Opt-out per
+  session with `--no-history` or globally via `connection_history = false`
+  in the config.
+
+### Changed
+
+- `--totp-source` now accepts `local`, `2fauth`, `bitwarden`, `1password`,
+  and `pass`.
+- `ProfileConfig` and `Config` gained optional `onepassword`, `pass_` and
+  `kill_switch` fields (all backwards-compatible, all default to `None`).
+- Exit-code allocation for missing TOTP-provider configuration:
+  `21` (2fauth), `22` (bitwarden), `23` (1password), `24` (pass).
 
 ### Fixed
-- **Security: B605 (High)** — replaced `os.system("clear")` with ANSI escape sequence
-  in TUI watch mode (no shell injection risk)
-- All bandit findings reviewed and annotated with `# nosec` where appropriate
 
----
+- `profiles` management now properly updates `active_profile` when a
+  profile is renamed.
 
-## [0.5.0] - 2026-03-31
+### Notes
 
-### Added
-- **Multi-profile support** — save and switch between named VPN configurations
-  - `openconnect-saml connect <profile>` to connect by profile name
-  - `openconnect-saml profiles` to list, add, and remove profiles
-  - TOML config: `[profiles.<name>]` sections with server, credentials, and settings
-  - Fully backwards-compatible: no profile argument uses `default_profile` as before
-- **Connection status TUI** — live VPN connection status display
-  - `openconnect-saml status` shows profile, server, user, uptime, IP, TX/RX
-  - `--watch` flag for live-updating display (refreshes every 2s)
-  - Optional `rich` dependency: `pip install openconnect-saml[tui]`
-  - Falls back to plain text output when `rich` is not installed
-- **Shell completion** — tab completion for all shells
-  - `openconnect-saml completion bash/zsh/fish` generates scripts
-  - `openconnect-saml completion install` auto-installs to correct paths
-  - Completes subcommands, flags, and profile names dynamically
-- New CLI architecture with subcommands (`connect`, `profiles`, `status`, `completion`, `service`)
-- 59 new tests (273 total)
+- All additions are opt-in and backwards-compatible. Existing configs,
+  saved profiles, and CLI invocations continue to work unchanged.
+- Kill-switch is Linux-only (iptables); on other platforms the command
+  surfaces a clear `KillSwitchNotSupported` error.
+- Connection history is enabled by default. It contains no secrets
+  (only timestamps, server URL, profile name, username, and
+  event/duration). Pass `--no-history` or set `connection_history =
+  false` in config to disable.
 
-## [0.4.0] - 2026-03-31
-
-### Added
-- **2FAuth TOTP integration** — fetch OTP codes from a [2FAuth](https://docs.2fauth.app/) instance via API
-- Config: `totp_source = "2fauth"` in `[credentials]`, new `[2fauth]` section with `url`, `token`, `account_id`
-- CLI: `--totp-source`, `--2fauth-url`, `--2fauth-token`, `--2fauth-account-id`
-- Pluggable `TotpProvider` abstraction (`LocalTotpProvider`, `TwoFAuthProvider`)
-- HTTPS enforcement warning for 2FAuth URLs
-- Token never logged — only redacted references
-
-## [0.3.0] - 2026-03-31
-
-### Added
-- **Chrome/Chromium browser** — Playwright-based alternative to Qt WebEngine (`--browser chrome`)
-- **Systemd service** — `openconnect-saml service install/start/stop/status/logs`
-- **Auto-reconnect** — automatic re-authentication on disconnect (`--reconnect`, `--max-retries`)
-- **FIDO2/Yubikey support** — USB security key authentication for 2FA
-- Backoff strategy: 30s → 60s → 120s → 300s between reconnect attempts
-- New optional deps: `[chrome]` for Playwright, `[fido2]` for security keys
-- 54 new tests (180 total)
-
-## [0.2.0] - 2026-03-31
-
-### Added
-- **Headless/CLI mode** — browser-free SAML authentication via `--headless` flag
-- Auto-authenticate: form parsing with username/password/TOTP injection
-- Local callback server for MFA flows that require a browser
-- PyQt6 now optional: `pip install openconnect-saml` works without GUI deps
-- GUI extras: `pip install openconnect-saml[gui]` for browser mode
-- 28 new headless tests (126 total)
+## [0.7.1] – 2026-02-18
 
 ### Fixed
-- Browser tests properly skipped in CI (no display server)
-- Platform-specific tests skipped on Windows
-## [0.1.1] - 2026-03-30
 
-### Improved
-- Complete CI/CD pipeline: security scanning (pip-audit, bandit), Windows tests, coverage reports
-- Automated release flow: tag → GitHub Release → PyPI → AUR
-- Code formatting standardized with ruff
+- Various small improvements.
 
-### Fixed
-- CI compatibility with PyQt6 system dependencies
-- Dev dependencies properly declared in pyproject.toml
+## [0.6.0] – 2024
 
-## [0.1.0] - 2026-03-30
-
-### About
-
-First release of `openconnect-saml` — a maintained fork combining [vlaci/openconnect-sso](https://github.com/vlaci/openconnect-sso) with improvements from [kowyo/openconnect-lite](https://github.com/kowyo/openconnect-lite).
-
-### Added
-- **SSL Legacy Renegotiation** — `--ssl-legacy` flag for servers requiring legacy SSL (upstream #81)
-- **On-connect/disconnect scripts** — `--on-connect` and `--on-disconnect` hooks
-- **CSD hostscan support** — `--csd-wrapper` passthrough to openconnect
-- **No-sudo mode** — `--no-sudo` for unprivileged operation
-- **Reset credentials** — `--reset-credentials` to clear stored keyring entries
-- **Client certificate support** — handles client cert requests gracefully
-- **Configurable HTTP timeouts** — `--timeout <seconds>` (default: 30)
-- **Configurable browser window size** — `--window-size WIDTHxHEIGHT`
-- **Microsoft Authenticator number matching** in default auto-fill rules
-- **Office365 "Stay signed in?" auto-dismiss** in default rules
-- **AUR PKGBUILD** for Arch Linux
-- **PyPI publish workflow** (GitHub Actions on tag push)
-- **98 tests** with comprehensive security test suite
-
-### Improved
-- **Python 3.10+** support (was 3.8+)
-- **PyQt6** (was PyQt5)
-- **hatchling** build system (was Poetry)
-- **Modern asyncio** — removed deprecated `get_event_loop()` calls
-- **importlib.resources** instead of deprecated `pkg_resources`
-- **Robust TOTP handling** — graceful recovery from corrupt secrets (upstream #143, #193)
-- **Better error messages** after 2FA failures with debug info (upstream #121)
-- **Azure AD login compatibility** — dispatches change/input events on form fill (upstream #189)
-- **Hostname in auth requests** for DeviceId (upstream #191)
-- **auth.message handling** — defensive access with fallback (upstream #175, #161)
-
-### Security
-- **XXE protection** — safe XML parsers with `resolve_entities=False, no_network=True`
-- **Command injection prevention** — `shell=False` + input validation for hooks
-- **Config file permissions** — saved with `chmod 0600`
-- **No credential logging** — passwords/secrets excluded from logs
-- **Proper exceptions** — replaced `assert` with `AuthResponseError`
-
-### Credits
-- [László Vaskó (vlaci)](https://github.com/vlaci) — original openconnect-sso
-- [Kowyo](https://github.com/kowyo) — openconnect-lite fork with modernization
-- Community contributors whose PRs and issues shaped this release
+Initial public release of the maintained fork, combining features from
+[vlaci/openconnect-sso](https://github.com/vlaci/openconnect-sso) and
+[kowyo/openconnect-lite](https://github.com/kowyo/openconnect-lite).

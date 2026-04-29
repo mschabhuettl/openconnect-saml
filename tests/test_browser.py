@@ -6,7 +6,7 @@ import pytest
 try:
     from openconnect_saml.browser import Browser
 
-    HAS_GUI = True
+    HAS_GUI = Browser is not None
 except (ImportError, OSError):
     HAS_GUI = False
     Browser = None  # type: ignore

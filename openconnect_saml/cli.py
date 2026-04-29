@@ -31,9 +31,7 @@ def _add_connection_args(parser):
     server_settings.add_argument(
         "-s",
         "--server",
-        help="VPN server to connect to. The following forms are accepted: "
-        "vpn.server.com, vpn.server.com/usergroup, "
-        "https://vpn.server.com, https.vpn.server.com.usergroup",
+        help="VPN server to connect to.",
     )
 
     auth_settings = parser.add_argument_group(
@@ -81,25 +79,14 @@ def _add_connection_args(parser):
         nargs="?",
         default="shown",
     )
+    parser.add_argument("--on-connect", help="Command to run after VPN connects", default="")
+    parser.add_argument("--on-disconnect", help="Command to run when disconnecting", default="")
     parser.add_argument(
-        "--on-connect",
-        help="Command/script to run after VPN connection is established",
-        default="",
-    )
-    parser.add_argument(
-        "--on-disconnect",
-        help="Command to run when disconnecting from VPN server",
-        default="",
-    )
-    parser.add_argument(
-        "--ac-version",
-        help="AnyConnect Version (default: %(default)s)",
-        default="4.7.00136",
+        "--ac-version", help="AnyConnect Version (default: %(default)s)", default="4.7.00136"
     )
     parser.add_argument(
         "-l",
         "--log-level",
-        help="",
         type=LogLevel.parse,
         choices=LogLevel.choices(),
         default=LogLevel.INFO,
@@ -127,34 +114,41 @@ def _add_connection_args(parser):
     totp_group.add_argument(
         "--totp-source",
         dest="totp_source",
-        choices=["local", "2fauth", "bitwarden"],
+        choices=["local", "2fauth", "bitwarden", "1password", "pass"],
         default=None,
-        help="TOTP provider: 'local', '2fauth', or 'bitwarden'",
+        help="TOTP provider",
+    )
+    totp_group.add_argument("--2fauth-url", dest="twofauth_url", default=None)
+    totp_group.add_argument("--2fauth-token", dest="twofauth_token", default=None)
+    totp_group.add_argument(
+        "--2fauth-account-id", dest="twofauth_account_id", type=int, default=None
     )
     totp_group.add_argument(
-        "--2fauth-url",
-        dest="twofauth_url",
-        default=None,
-        help="2FAuth instance URL",
+        "--bw-item-id", dest="bw_item_id", default=None, help="Bitwarden vault item ID for TOTP"
     )
     totp_group.add_argument(
-        "--2fauth-token",
-        dest="twofauth_token",
+        "--1password-item",
+        dest="op_item",
         default=None,
-        help="2FAuth Personal Access Token",
+        help="1Password item ID/name that has an OTP field",
     )
     totp_group.add_argument(
-        "--2fauth-account-id",
-        dest="twofauth_account_id",
-        type=int,
+        "--1password-vault",
+        dest="op_vault",
         default=None,
-        help="2FAuth account ID",
+        help="1Password vault name/UUID (optional)",
     )
     totp_group.add_argument(
-        "--bw-item-id",
-        dest="bw_item_id",
+        "--1password-account",
+        dest="op_account",
         default=None,
-        help="Bitwarden vault item ID for TOTP",
+        help="1Password account sign-in address (for multi-account setups)",
+    )
+    totp_group.add_argument(
+        "--pass-entry",
+        dest="pass_entry",
+        default=None,
+        help="pass (password-store) entry path for TOTP (requires pass-otp)",
     )
 
     reconnect_group = parser.add_argument_group("Reconnect options")
@@ -178,14 +172,14 @@ def _add_connection_args(parser):
         dest="routes",
         action="append",
         default=None,
-        help="Include route in VPN tunnel (CIDR, e.g. 10.0.0.0/8). Repeatable.",
+        help="Include route in VPN tunnel (CIDR). Repeatable.",
     )
     route_group.add_argument(
         "--no-route",
         dest="no_routes",
         action="append",
         default=None,
-        help="Exclude route from VPN tunnel (CIDR, e.g. 192.168.0.0/16). Repeatable.",
+        help="Exclude route from VPN tunnel (CIDR). Repeatable.",
     )
 
     notification_group = parser.add_argument_group("Notification options")
@@ -197,48 +191,69 @@ def _add_connection_args(parser):
         default=False,
     )
 
+    ks_group = parser.add_argument_group("Kill-switch (Linux only)")
+    ks_group.add_argument(
+        "--kill-switch",
+        dest="kill_switch",
+        action="store_true",
+        default=False,
+        help="Enable kill-switch: block all non-VPN traffic until the tunnel is up",
+    )
+    ks_group.add_argument(
+        "--ks-allow-dns",
+        dest="ks_allow_dns",
+        action="append",
+        default=None,
+        help="DNS resolver IP to allow through the kill-switch (repeatable)",
+    )
+    ks_group.add_argument(
+        "--ks-allow-lan",
+        dest="ks_allow_lan",
+        action="store_true",
+        default=False,
+        help="Allow RFC1918 LAN traffic through the kill-switch",
+    )
+    ks_group.add_argument(
+        "--ks-no-ipv6",
+        dest="ks_no_ipv6",
+        action="store_true",
+        default=False,
+        help="Don't install ip6tables kill-switch rules",
+    )
+    ks_group.add_argument(
+        "--ks-port",
+        dest="ks_port",
+        type=int,
+        default=443,
+        help="VPN server port to allowlist (default: 443)",
+    )
+    ks_group.add_argument(
+        "--ks-sudo",
+        dest="ks_sudo",
+        default=None,
+        help="Privilege-escalation tool for iptables (default: autodetect sudo/doas)",
+    )
+
     connection_group = parser.add_argument_group("Connection options")
     connection_group.add_argument(
-        "--no-sudo",
-        dest="no_sudo",
-        help="Do not use sudo/doas to run openconnect",
+        "--no-sudo", dest="no_sudo", action="store_true", default=False
+    )
+    connection_group.add_argument("--csd-wrapper", dest="csd_wrapper", default=None)
+    connection_group.add_argument(
+        "--ssl-legacy", dest="ssl_legacy", action="store_true", default=False
+    )
+    connection_group.add_argument("--timeout", dest="timeout", type=int, default=None)
+    connection_group.add_argument(
+        "--no-history",
+        dest="no_history",
         action="store_true",
         default=False,
-    )
-    connection_group.add_argument(
-        "--csd-wrapper",
-        dest="csd_wrapper",
-        help="Path to CSD hostscan wrapper script",
-        default=None,
-    )
-    connection_group.add_argument(
-        "--ssl-legacy",
-        dest="ssl_legacy",
-        help="Enable SSL legacy renegotiation",
-        action="store_true",
-        default=False,
-    )
-    connection_group.add_argument(
-        "--timeout",
-        dest="timeout",
-        help="HTTP request timeout in seconds (default: 30)",
-        type=int,
-        default=None,
+        help="Don't log this session to ~/.local/state/openconnect-saml/history.jsonl",
     )
 
     ui_group = parser.add_argument_group("UI options")
-    ui_group.add_argument(
-        "--window-size",
-        dest="window_size",
-        help="Browser window size as WIDTHxHEIGHT (default: 800x600)",
-        default=None,
-    )
-    ui_group.add_argument(
-        "--useragent",
-        dest="useragent",
-        help="Custom User-Agent string for OpenConnect (default: AnyConnect Linux_64/x.x.x)",
-        default=None,
-    )
+    ui_group.add_argument("--window-size", dest="window_size", default=None)
+    ui_group.add_argument("--useragent", dest="useragent", default=None)
     return parser
 
 
@@ -251,63 +266,120 @@ def create_argparser():
 
     subparsers = parser.add_subparsers(dest="command")
 
-    # 'connect' subcommand
+    # connect
     connect_parser = subparsers.add_parser("connect", help="Connect to a VPN profile or server")
     connect_parser.add_argument(
-        "profile_name",
-        nargs="?",
-        default=None,
-        help="Name of a saved profile to connect to",
+        "profile_name", nargs="?", default=None, help="Name of a saved profile"
     )
     _add_connection_args(connect_parser)
 
-    # 'profiles' subcommand
+    # profiles
     profiles_parser = subparsers.add_parser("profiles", help="Manage VPN profiles")
     profiles_sub = profiles_parser.add_subparsers(dest="profiles_action")
     profiles_sub.add_parser("list", help="List all profiles")
 
     add_parser = profiles_sub.add_parser("add", help="Add a new profile")
-    add_parser.add_argument("profile_name", help="Profile name")
-    add_parser.add_argument("--server", required=False, help="VPN server address")
-    add_parser.add_argument("--user-group", default="", help="User group")
-    add_parser.add_argument("--display-name", default="", help="Display name for the profile")
-    add_parser.add_argument("-u", "--user", default=None, help="Username")
+    add_parser.add_argument("profile_name")
+    add_parser.add_argument("--server")
+    add_parser.add_argument("--user-group", default="")
+    add_parser.add_argument("--display-name", default="")
+    add_parser.add_argument("-u", "--user", default=None)
     add_parser.add_argument(
-        "--totp-source", default=None, choices=["local", "2fauth"], help="TOTP source"
+        "--totp-source",
+        default=None,
+        choices=["local", "2fauth", "bitwarden", "1password", "pass"],
     )
 
     remove_parser = profiles_sub.add_parser("remove", help="Remove a profile")
-    remove_parser.add_argument("profile_name", help="Profile name to remove")
+    remove_parser.add_argument("profile_name")
 
-    # 'status' subcommand
-    status_parser = subparsers.add_parser("status", help="Show VPN connection status")
-    status_parser.add_argument(
-        "--watch",
-        "-w",
-        action="store_true",
-        default=False,
-        help="Live-update status every 2 seconds",
+    rename_parser = profiles_sub.add_parser("rename", help="Rename a profile")
+    rename_parser.add_argument("profile_name")
+    rename_parser.add_argument("new_name")
+
+    show_parser = profiles_sub.add_parser("show", help="Show a single profile (redacted)")
+    show_parser.add_argument("profile_name")
+    show_parser.add_argument("--json", action="store_true", default=False)
+
+    export_parser = profiles_sub.add_parser(
+        "export", help="Export profiles as JSON (secrets redacted)"
+    )
+    export_parser.add_argument(
+        "profile_name", nargs="?", default=None, help="Profile to export (all if omitted)"
+    )
+    export_parser.add_argument("--file", "-o", default=None, help="Output file (default: stdout)")
+
+    import_parser = profiles_sub.add_parser("import", help="Import profiles from JSON")
+    import_parser.add_argument("file", help="Input file (or '-' for stdin)")
+    import_parser.add_argument(
+        "--as", dest="as_name", default=None, help="Import under a different name"
+    )
+    import_parser.add_argument(
+        "--force", action="store_true", default=False, help="Overwrite existing profiles"
     )
 
-    # 'completion' subcommand
+    # status
+    status_parser = subparsers.add_parser("status", help="Show VPN connection status")
+    status_parser.add_argument("--watch", "-w", action="store_true", default=False)
+
+    # completion
     completion_parser = subparsers.add_parser("completion", help="Generate shell completions")
     completion_parser.add_argument(
-        "shell_type",
-        choices=["bash", "zsh", "fish", "install", "_profiles"],
-        help="Shell type or 'install' for auto-installation",
+        "shell_type", choices=["bash", "zsh", "fish", "install", "_profiles"]
     )
 
-    # 'setup' subcommand (interactive config wizard)
+    # setup
     subparsers.add_parser("setup", help="Interactive configuration wizard")
 
-    # 'service' subcommand (for backwards compat, handled separately)
+    # service
     subparsers.add_parser("service", help="Manage systemd VPN service", add_help=False)
+
+    # config
+    config_parser = subparsers.add_parser("config", help="Inspect config file")
+    config_sub = config_parser.add_subparsers(dest="config_action")
+    config_sub.add_parser("path", help="Print path to config file")
+    config_show = config_sub.add_parser("show", help="Show config (secrets redacted)")
+    config_show.add_argument("--json", action="store_true", default=False)
+    config_sub.add_parser("validate", help="Validate config file")
+    config_sub.add_parser("edit", help="Open config file in $EDITOR")
+
+    # doctor
+    doctor_parser = subparsers.add_parser("doctor", help="Run diagnostic checks")
+    doctor_parser.add_argument(
+        "-s", "--server", default=None, help="Optional: test DNS + TCP to this server"
+    )
+
+    # history
+    history_parser = subparsers.add_parser("history", help="Show connection history")
+    history_sub = history_parser.add_subparsers(dest="history_action")
+    history_show = history_sub.add_parser("show", help="Show connection log")
+    history_show.add_argument("--limit", "-n", type=int, default=None)
+    history_show.add_argument("--json", action="store_true", default=False)
+    history_sub.add_parser("clear", help="Clear the history log")
+    history_sub.add_parser("path", help="Print path to history file")
+    history_parser.add_argument("--limit", "-n", type=int, default=None)
+    history_parser.add_argument("--json", action="store_true", default=False)
+
+    # killswitch
+    ks_parser = subparsers.add_parser(
+        "killswitch", help="Manage the traffic kill-switch (Linux only)"
+    )
+    ks_sub = ks_parser.add_subparsers(dest="killswitch_action")
+    ks_enable = ks_sub.add_parser("enable", help="Enable kill-switch")
+    ks_enable.add_argument("-s", "--server", required=True, help="VPN server to allowlist")
+    ks_enable.add_argument("--ks-port", type=int, default=443)
+    ks_enable.add_argument("--ks-allow-dns", action="append", default=None)
+    ks_enable.add_argument("--ks-allow-lan", action="store_true", default=False)
+    ks_enable.add_argument("--ks-no-ipv6", action="store_true", default=False)
+    ks_enable.add_argument("--ks-sudo", default=None)
+    ks_sub.add_parser("disable", help="Disable kill-switch")
+    ks_sub.add_parser("status", help="Show kill-switch status")
 
     return parser
 
 
 def create_legacy_argparser():
-    """Create a legacy-compatible parser (no subcommands) for backwards compatibility."""
+    """Legacy (no-subcommand) parser for backwards compatibility."""
     parser = argparse.ArgumentParser(
         prog="openconnect-saml", description=openconnect_saml.__description__
     )
@@ -347,7 +419,7 @@ class LogLevel(enum.IntEnum):
 
 
 def create_service_argparser():
-    """Create a separate parser for the 'service' subcommand."""
+    """Parser for the 'service' subcommand."""
     parser = argparse.ArgumentParser(
         prog="openconnect-saml service",
         description="Manage systemd service for persistent VPN connections",
@@ -355,66 +427,82 @@ def create_service_argparser():
     subparsers = parser.add_subparsers(dest="service_action", required=True)
 
     install_p = subparsers.add_parser("install", help="Install systemd unit")
-    install_p.add_argument("-s", "--server", required=True, help="VPN server address")
-    install_p.add_argument("-u", "--user", help="Username for authentication")
+    install_p.add_argument("-s", "--server", required=True)
+    install_p.add_argument("-u", "--user")
     install_p.add_argument(
-        "--browser",
-        choices=["headless", "chrome", "qt"],
-        default="headless",
-        help="Browser backend for the service (default: headless)",
+        "--browser", choices=["headless", "chrome", "qt"], default="headless"
     )
-    install_p.add_argument("--max-retries", type=int, default=None, help="Max reconnection retries")
+    install_p.add_argument("--max-retries", type=int, default=None)
 
     uninstall_p = subparsers.add_parser("uninstall", help="Remove systemd unit")
-    uninstall_p.add_argument("-s", "--server", required=True, help="VPN server address")
+    uninstall_p.add_argument("-s", "--server", required=True)
 
     start_p = subparsers.add_parser("start", help="Start VPN service")
-    start_p.add_argument("-s", "--server", required=True, help="VPN server address")
+    start_p.add_argument("-s", "--server", required=True)
 
     stop_p = subparsers.add_parser("stop", help="Stop VPN service")
-    stop_p.add_argument("-s", "--server", required=True, help="VPN server address")
+    stop_p.add_argument("-s", "--server", required=True)
 
     status_p = subparsers.add_parser("status", help="Show service status")
-    status_p.add_argument("-s", "--server", default=None, help="VPN server address")
+    status_p.add_argument("-s", "--server", default=None)
 
     logs_p = subparsers.add_parser("logs", help="Show service logs")
-    logs_p.add_argument("-s", "--server", default=None, help="VPN server address")
-    logs_p.add_argument("-f", "--follow", action="store_true", help="Follow log output")
+    logs_p.add_argument("-s", "--server", default=None)
+    logs_p.add_argument("-f", "--follow", action="store_true")
 
     return parser
 
 
 def _handle_profiles_command(args):
-    """Handle the 'profiles' subcommand."""
     from openconnect_saml.profiles import handle_profiles_command
 
     return handle_profiles_command(args)
 
 
 def _handle_status_command(args):
-    """Handle the 'status' subcommand."""
     from openconnect_saml.tui import handle_status_command
 
     return handle_status_command(args)
 
 
 def _handle_completion_command(args):
-    """Handle the 'completion' subcommand."""
     from openconnect_saml.completion import handle_completion_command
 
     return handle_completion_command(args)
 
 
 def _handle_setup_command():
-    """Handle the 'setup' subcommand (interactive wizard)."""
     from openconnect_saml.setup_wizard import run_setup_wizard
 
     return run_setup_wizard()
 
 
+def _handle_config_command(args):
+    from openconnect_saml.config_cmd import handle_config_command
+
+    return handle_config_command(args)
+
+
+def _handle_doctor_command(args):
+    from openconnect_saml.doctor import handle_doctor_command
+
+    return handle_doctor_command(args)
+
+
+def _handle_history_command(args):
+    from openconnect_saml.history import handle_history_command
+
+    return handle_history_command(args)
+
+
+def _handle_killswitch_command(args):
+    from openconnect_saml.killswitch import handle_killswitch_command
+
+    return handle_killswitch_command(args)
+
+
 def _handle_connect(args, parser):
     """Handle the 'connect' subcommand or legacy invocation."""
-    # --browser flag overrides --headless
     if args.browser and args.browser == "headless":
         args.headless = True
 
@@ -423,7 +511,6 @@ def _handle_connect(args, parser):
     ):
         parser.error("--profile/--profile-selector and --server/--usergroup are mutually exclusive")
 
-    # If a profile_name is given, resolve it from config
     profile_name = getattr(args, "profile_name", None)
     if profile_name:
         cfg = config.load()
@@ -434,7 +521,6 @@ def _handle_connect(args, parser):
             for name, _ in cfg.list_profiles():
                 print(f"  - {name}", file=sys.stderr)
             return 1
-        # Apply profile settings (--server flag overrides profile server)
         if not args.server:
             args.server = prof.server
         if not args.usergroup and prof.user_group:
@@ -456,7 +542,8 @@ def _handle_connect(args, parser):
             args.profile_path = "/opt/cisco/anyconnect/profile"
         else:
             parser.error(
-                "No AnyConnect profile can be found. One of --profile, --server, or a saved profile name is required."
+                "No AnyConnect profile can be found. "
+                "One of --profile, --server, or a saved profile name is required."
             )
 
     if getattr(args, "use_profile_selector", False) and not getattr(args, "profile_path", None):
@@ -469,16 +556,18 @@ def _is_legacy_invocation(argv):
     """Check if the invocation uses legacy (no subcommand) style."""
     if not argv:
         return True
-    known_subcommands = {"connect", "profiles", "status", "completion", "service", "setup"}
+    known_subcommands = {
+        "connect", "profiles", "status", "completion", "service", "setup",
+        "config", "doctor", "history", "killswitch",
+    }
     first = argv[0]
-    # If the first arg starts with - or is not a subcommand, it's legacy
     return first.startswith("-") or first not in known_subcommands
 
 
 def main():
     argv = sys.argv[1:]
 
-    # Check for 'service' subcommand before main argparse
+    # 'service' has its own parser because it conflicts with the main one
     if len(argv) > 0 and argv[0] == "service":
         from openconnect_saml.service import handle_service_command
 
@@ -486,31 +575,37 @@ def main():
         args = service_parser.parse_args(argv[1:])
         return handle_service_command(args)
 
-    # Check for known subcommands
     if not _is_legacy_invocation(argv):
         parser = create_argparser()
         args = parser.parse_args(argv)
 
         if args.command == "connect":
             return _handle_connect(args, parser)
-        elif args.command == "profiles":
+        if args.command == "profiles":
             return _handle_profiles_command(args)
-        elif args.command == "status":
+        if args.command == "status":
             return _handle_status_command(args)
-        elif args.command == "completion":
+        if args.command == "completion":
             return _handle_completion_command(args)
-        elif args.command == "setup":
+        if args.command == "setup":
             return _handle_setup_command()
-        else:
-            parser.print_help()
-            return 0
-    else:
-        # Legacy mode: no subcommand
-        parser = create_legacy_argparser()
-        args = parser.parse_args(argv)
-        # Set profile_name to None for legacy compat
-        args.profile_name = None
-        return _handle_connect(args, parser)
+        if args.command == "config":
+            return _handle_config_command(args)
+        if args.command == "doctor":
+            return _handle_doctor_command(args)
+        if args.command == "history":
+            return _handle_history_command(args)
+        if args.command == "killswitch":
+            return _handle_killswitch_command(args)
+
+        parser.print_help()
+        return 0
+
+    # Legacy mode: no subcommand
+    parser = create_legacy_argparser()
+    args = parser.parse_args(argv)
+    args.profile_name = None
+    return _handle_connect(args, parser)
 
 
 if __name__ == "__main__":

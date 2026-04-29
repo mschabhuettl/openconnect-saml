@@ -503,3 +503,208 @@ ruff check .
 ---
 
 <a href="https://www.buymeacoffee.com/mschabhuettl" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" style="height: 60px !important;width: 217px !important;" ></a>
+
+---
+
+# openconnect-saml — v0.8.0 feature additions
+
+The following sections document the six new features added in v0.8.0.
+These are supplements to the main `README.md`; integrate them into the
+appropriate sections of the main README.
+
+---
+
+## 1Password TOTP
+
+Delegate TOTP generation to 1Password's `op` CLI. You'll need to be signed
+in (`op signin` with an exported session token, or biometric/system
+integration on desktop OSes).
+
+```bash
+openconnect-saml connect work \
+    --totp-source 1password \
+    --1password-item "vpn-work-mfa" \
+    --1password-vault "Engineering"
+```
+
+Configuration equivalent:
+
+```toml
+[1password]
+item = "vpn-work-mfa"       # UUID, name, or share URL
+vault = "Engineering"        # optional — searches all vaults if omitted
+account = "acme.1password.com"  # optional, for multi-account setups
+
+[profiles.work.credentials]
+totp_source = "1password"
+```
+
+## pass (password-store) TOTP
+
+Uses the [`pass-otp`](https://github.com/tadfisher/pass-otp) extension.
+Your password entry must contain a `otpauth://` or `totp://` URI.
+
+```bash
+openconnect-saml connect work \
+    --totp-source pass \
+    --pass-entry "vpn/work-totp"
+```
+
+Configuration:
+
+```toml
+[pass]
+entry = "vpn/work-totp"
+
+[profiles.work.credentials]
+totp_source = "pass"
+```
+
+Requirements: the `pass` binary, the `pass-otp` extension, and an
+unlocked GPG agent.
+
+## Kill-switch (Linux / iptables)
+
+Blocks every outbound connection except to the VPN server, loopback, and
+`tun*`/`utun*`/`ppp*` tunnels. Connection replies are allowed via
+conntrack `ESTABLISHED,RELATED`. Optionally allowlist DNS resolvers and
+RFC1918 LAN ranges.
+
+**One-shot (auto-clears on disconnect):**
+
+```bash
+openconnect-saml connect work --kill-switch \
+    --ks-allow-dns 1.1.1.1 --ks-allow-dns 9.9.9.9 \
+    --ks-allow-lan
+```
+
+**Standalone (persists until explicitly disabled):**
+
+```bash
+sudo openconnect-saml killswitch enable -s vpn.example.com \
+    --ks-allow-dns 1.1.1.1
+sudo openconnect-saml killswitch status
+sudo openconnect-saml killswitch disable
+```
+
+Persistent configuration:
+
+```toml
+[kill_switch]
+enabled = true
+allow_lan = false
+ipv6 = true
+dns_servers = ["1.1.1.1", "9.9.9.9"]
+```
+
+**Safety notes**
+
+- iptables only (Linux); other platforms return a clear
+  `KillSwitchNotSupported` error.
+- The chain `OPENCONNECT_SAML_KILLSWITCH` is the only thing installed;
+  removal is idempotent via `killswitch disable`.
+- If the CLI crashes and the chain is stuck, `iptables -F
+  OPENCONNECT_SAML_KILLSWITCH && iptables -X OPENCONNECT_SAML_KILLSWITCH`
+  will remove it.
+- The session-based `--kill-switch` flag automatically tears down on
+  disconnect. The persistent form (configured in `[kill_switch]` or via
+  `killswitch enable`) stays up until explicitly disabled.
+
+## Profile export / import
+
+Share profiles across machines without secrets:
+
+```bash
+openconnect-saml profiles export work --file work.json
+openconnect-saml profiles export > all-profiles.json
+openconnect-saml profiles import work.json
+openconnect-saml profiles import work.json --as office --force
+cat work.json | openconnect-saml profiles import -
+```
+
+The export strips `password`, `totp`, `totp_secret`, and the 2fauth
+`token` — usernames, server URLs, TOTP source, and split-tunnel routes
+are preserved. New companion commands:
+
+```bash
+openconnect-saml profiles rename old-name new-name
+openconnect-saml profiles show work --json   # redacted view
+```
+
+## `config` subcommand
+
+Inspect and validate the configuration file:
+
+```bash
+openconnect-saml config path
+openconnect-saml config show            # TOML, secrets redacted
+openconnect-saml config show --json
+openconnect-saml config validate        # schema + semantic checks
+openconnect-saml config edit            # opens $EDITOR
+```
+
+`validate` catches: TOML syntax errors, missing `server` on a profile,
+unresolvable `active_profile`, missing `[2fauth]`/`[bitwarden]` for
+profiles that reference them, invalid CIDRs in `routes`/`no_routes`, and
+overly-permissive file modes.
+
+## `doctor` command
+
+One-shot system diagnostics. Exit code: 0 = all OK, 1 = at least one
+failure, 2 = at least one warning.
+
+```bash
+openconnect-saml doctor
+openconnect-saml doctor -s vpn.example.com   # also test DNS + TCP
+```
+
+Checks include: Python version ≥ 3.10, `openconnect` binary,
+sudo/doas, `/dev/net/tun`, core deps (attrs, keyring, lxml, pyotp,
+requests, structlog, toml), optional deps (PyQt6, playwright, fido2,
+rich), keyring backend, config dir + permissions, credential env-var
+presence, DNS resolution + TCP reachability of a provided server, and
+whether the kill-switch is currently active.
+
+## Connection history
+
+A lightweight audit log of VPN sessions, written to
+`$XDG_STATE_HOME/openconnect-saml/history.jsonl` (owner-read 0o600,
+rotated at 512 KiB). One JSON object per line.
+
+```bash
+openconnect-saml history show           # human-readable, newest first
+openconnect-saml history show -n 20     # limit to 20 entries
+openconnect-saml history show --json
+openconnect-saml history clear
+openconnect-saml history path
+```
+
+Events logged: `connected`, `disconnected` (with duration),
+`reconnecting` (with attempt number and backoff delay), `error`.
+
+**Privacy / security**
+
+- Only metadata: timestamp, event type, server URL, profile name,
+  username, duration, free-text message.
+- Never logs passwords, tokens, TOTP codes, or session cookies.
+- Enabled by default. Disable per session with `--no-history` or
+  globally with `connection_history = false` in config.
+
+## Exit codes (reference)
+
+| Code | Meaning                                            |
+|-----:|----------------------------------------------------|
+|   0  | Success                                            |
+|   1  | Generic failure                                    |
+|   2  | Platform not supported / browser terminated       |
+|   3  | Authentication response missing expected fields   |
+|   4  | HTTP error during authentication                   |
+|  17  | No AnyConnect profile found                        |
+|  18  | No AnyConnect profile selected                     |
+|  19  | Invalid arguments                                  |
+|  20  | No superuser tool / not running as Administrator   |
+|  21  | 2FAuth TOTP config missing                         |
+|  22  | Bitwarden TOTP config missing                      |
+|  23  | 1Password TOTP config missing                      |
+|  24  | pass TOTP config missing                           |
+|  130 | Interrupted (Ctrl-C)                               |
