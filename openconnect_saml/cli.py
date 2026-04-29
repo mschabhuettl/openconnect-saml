@@ -114,9 +114,16 @@ def _add_connection_args(parser):
     totp_group.add_argument(
         "--totp-source",
         dest="totp_source",
-        choices=["local", "2fauth", "bitwarden", "1password", "pass"],
+        choices=["local", "2fauth", "bitwarden", "1password", "pass", "none"],
         default=None,
-        help="TOTP provider",
+        help="TOTP provider, or 'none' to skip the TOTP prompt entirely",
+    )
+    totp_group.add_argument(
+        "--no-totp",
+        dest="no_totp",
+        action="store_true",
+        default=False,
+        help="Don't prompt for a TOTP secret (equivalent to --totp-source none)",
     )
     totp_group.add_argument("--2fauth-url", dest="twofauth_url", default=None)
     totp_group.add_argument("--2fauth-token", dest="twofauth_token", default=None)
@@ -285,7 +292,7 @@ def create_argparser():
     add_parser.add_argument(
         "--totp-source",
         default=None,
-        choices=["local", "2fauth", "bitwarden", "1password", "pass"],
+        choices=["local", "2fauth", "bitwarden", "1password", "pass", "none"],
     )
 
     remove_parser = profiles_sub.add_parser("remove", help="Remove a profile")
@@ -300,12 +307,20 @@ def create_argparser():
     show_parser.add_argument("--json", action="store_true", default=False)
 
     export_parser = profiles_sub.add_parser(
-        "export", help="Export profiles as JSON (secrets redacted)"
+        "export", help="Export profiles as JSON or NetworkManager .nmconnection (secrets redacted)"
     )
     export_parser.add_argument(
         "profile_name", nargs="?", default=None, help="Profile to export (all if omitted)"
     )
     export_parser.add_argument("--file", "-o", default=None, help="Output file (default: stdout)")
+    export_parser.add_argument(
+        "--format",
+        "-f",
+        choices=["json", "nmconnection"],
+        default="json",
+        help="Export format (default: json). 'nmconnection' produces a NetworkManager "
+        "VPN profile compatible with the Ubuntu/GNOME VPN UI.",
+    )
 
     import_parser = profiles_sub.add_parser("import", help="Import profiles from JSON")
     import_parser.add_argument("file", help="Input file (or '-' for stdin)")

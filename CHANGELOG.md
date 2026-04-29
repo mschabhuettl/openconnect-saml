@@ -5,6 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.2] – 2026-04-29
+
+### Added
+
+- **NetworkManager profile export (#22)** — `profiles export` now supports
+  `--format nmconnection` to render a profile as a
+  `.nmconnection` file compatible with the `network-manager-openconnect`
+  plugin and the Ubuntu/GNOME VPN UI. UUIDs are derived from the profile
+  name so re-exports overwrite the same connection in NM rather than
+  duplicating it. Single profile → single file (or stdout); multiple
+  profiles → write into a directory. Secrets are not written.
+- **`--no-totp` / `--totp-source none` (#22)** — explicitly skip the
+  interactive TOTP prompt for accounts that don't use TOTP. Saved into
+  profiles by `setup` and `profiles add`, so subsequent `connect` runs
+  no longer ask.
+- **1Password & pass options in `setup` wizard** — the interactive setup
+  wizard can now configure the 1Password and pass TOTP providers, not
+  only `local`/`2fauth`/`bitwarden`/`none`.
+
+### Fixed
+
+- **Qt-mode hardware security keys (#24)** — Yubikey / Nitrokey / FIDO2
+  keys now work with the Qt WebEngine browser. The `webAuthUxRequested`
+  signal is wired to a UX handler that drives the SelectAccount /
+  CollectPin / FinishTokenCollection / RequestFailed states. Requires
+  Qt-WebEngine ≥ 6.7; older versions log a warning and recommend
+  `--browser chrome`.
+- **AUR publish workflow** — switched to `webfactory/ssh-agent`, which
+  keeps the AUR signing key in memory instead of writing it to disk
+  during the workflow run, and dropped debug output that exposed the
+  key length and the first 50 characters of the key in CI logs.
+- **`test_detect_device_no_fido2_library`** — robustly intercepts the
+  import so the test passes regardless of whether the optional `fido2`
+  extra is installed in the test environment.
+
+### Changed
+
+- `pyqt6` and `pyqt6-webengine` are now pinned to `>=6.7` (required for
+  WebAuthn UX support). Existing installs continue to work, but FIDO2
+  hardware-key flows in the Qt browser need the newer Qt.
+
 ## [0.8.1] – 2026-04-29
 
 ### Added

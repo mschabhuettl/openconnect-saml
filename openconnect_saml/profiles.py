@@ -3,15 +3,22 @@
 Provides CLI handlers for listing, adding, removing, exporting, and importing
 named VPN profiles from the configuration file.
 
-Export/import format is plain JSON for portability — a single profile is a
+Export/import default format is plain JSON for portability — a single profile is a
 JSON object; multiple profiles exported at once are wrapped in a top-level
 ``{"profiles": {...}}`` envelope.
+
+Profiles can also be exported as a NetworkManager ``.nmconnection`` file
+(``--format nmconnection``) that can be dropped into
+``/etc/NetworkManager/system-connections/`` to import the profile into the
+Ubuntu/GNOME VPN UI (#22). The generated file uses the
+``org.freedesktop.NetworkManager.openconnect`` plugin and contains no secrets.
 """
 
 from __future__ import annotations
 
 import json
 import sys
+import uuid as _uuid
 from pathlib import Path
 
 from openconnect_saml import config
@@ -243,11 +250,82 @@ def _profile_to_exportable(name: str, prof) -> dict:
     return data
 
 
+def _profile_to_nmconnection(name: str, prof) -> str:
+    """Render a profile as a NetworkManager ``.nmconnection`` file.
+
+    The output uses the ``org.freedesktop.NetworkManager.openconnect`` plugin
+    so it can be imported into NetworkManager / the Ubuntu VPN UI. The UUID
+    is derived from the profile name so re-exporting the same profile
+    overwrites the existing connection in NM rather than duplicating it.
+
+    Secrets (passwords, TOTP) are not written; SAML/SSO authentication still
+    happens at connect time via the openconnect plugin.
+    """
+    server = getattr(prof, "server", "") or ""
+    user_group = getattr(prof, "user_group", "") or ""
+    display_name = getattr(prof, "name", "") or name
+
+    username = ""
+    creds = getattr(prof, "credentials", None)
+    if creds is not None:
+        username = getattr(creds, "username", "") or ""
+
+    gateway = server
+    if "://" in gateway:
+        gateway = gateway.split("://", 1)[1]
+    gateway = gateway.rstrip("/")
+
+    nm_uuid = str(_uuid.uuid5(_uuid.NAMESPACE_URL, f"openconnect-saml://{name}"))
+
+    lines = [
+        "[connection]",
+        f"id={display_name or name}",
+        f"uuid={nm_uuid}",
+        "type=vpn",
+        "autoconnect=false",
+        "",
+        "[vpn]",
+        "service-type=org.freedesktop.NetworkManager.openconnect",
+        f"gateway={gateway}",
+        "authtype=password",
+        "protocol=anyconnect",
+        "gateway-flags=2",
+        "useragent-flags=0",
+        "no_external_auth-flags=0",
+    ]
+    if user_group:
+        lines.append(f"usergroup={user_group}")
+    if username:
+        lines.append(r"form\:main\:username-flags=0")
+    lines.append("")
+
+    if username:
+        lines += [
+            "[vpn-secrets]",
+            f"form:main:username={username}",
+            "",
+        ]
+
+    lines += [
+        "[ipv4]",
+        "method=auto",
+        "",
+        "[ipv6]",
+        "method=auto",
+        "",
+    ]
+    return "\n".join(lines)
+
+
 def _export_profile(args):
-    """Export one (or all) profiles to a JSON file or stdout."""
+    """Export one (or all) profiles to JSON or .nmconnection file(s)."""
     cfg = config.load()
     name = getattr(args, "profile_name", None)
     target = getattr(args, "file", None)
+    fmt = (getattr(args, "format", None) or "json").lower()
+
+    if fmt == "nmconnection":
+        return _export_nmconnection(cfg, name, target)
 
     if name:
         prof = cfg.get_profile(name)
@@ -274,6 +352,65 @@ def _export_profile(args):
         print(f"✓ Exported to {path}")
     else:
         print(text)
+    return 0
+
+
+def _export_nmconnection(cfg, name, target):
+    """Write one or more profiles as NetworkManager .nmconnection files."""
+    profs: list[tuple[str, object]]
+    if name:
+        prof = cfg.get_profile(name)
+        if not prof:
+            print(f"Error: profile '{name}' not found.", file=sys.stderr)
+            return 1
+        profs = [(name, prof)]
+    else:
+        profs = list(cfg.list_profiles())
+        if not profs:
+            print("No profiles to export.", file=sys.stderr)
+            return 1
+
+    if not target or target == "-":
+        # Stdout: only valid for a single profile, otherwise concat with separators
+        if len(profs) > 1:
+            print(
+                "Error: --format nmconnection with multiple profiles requires --file <directory>.",
+                file=sys.stderr,
+            )
+            return 1
+        print(_profile_to_nmconnection(*profs[0]))
+        return 0
+
+    out_path = Path(target)
+    if len(profs) == 1 and not out_path.is_dir():
+        text = _profile_to_nmconnection(*profs[0])
+        try:
+            out_path.write_text(text)
+            out_path.chmod(0o600)
+        except OSError as exc:
+            print(f"Error writing {out_path}: {exc}", file=sys.stderr)
+            return 1
+        print(f"✓ Exported to {out_path}")
+        print("  Install with: sudo cp", out_path, "/etc/NetworkManager/system-connections/")
+        print("  Then: sudo nmcli connection reload")
+        return 0
+
+    # Multiple profiles → write each into the directory
+    try:
+        out_path.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        print(f"Error creating {out_path}: {exc}", file=sys.stderr)
+        return 1
+    for pname, prof in profs:
+        fname = f"{pname}.nmconnection"
+        path = out_path / fname
+        try:
+            path.write_text(_profile_to_nmconnection(pname, prof))
+            path.chmod(0o600)
+        except OSError as exc:
+            print(f"Error writing {path}: {exc}", file=sys.stderr)
+            return 1
+        print(f"✓ Exported {pname} → {path}")
     return 0
 
 

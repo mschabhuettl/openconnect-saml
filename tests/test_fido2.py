@@ -31,14 +31,21 @@ class TestFIDO2Authenticator:
         """detect_device raises FIDO2AuthError when library not installed."""
         auth = FIDO2Authenticator()
 
-        with patch.dict("sys.modules", {"fido2": None, "fido2.hid": None}):
-            import sys
+        # Intercept the import so the test works whether fido2 is installed or not.
+        import builtins
 
-            for mod in list(sys.modules):
-                if mod.startswith("fido2"):
-                    del sys.modules[mod]
-            with pytest.raises(FIDO2AuthError, match="not installed"):
-                auth._ensure_fido2()
+        real_import = builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            if name == "fido2" or name.startswith("fido2."):
+                raise ImportError(f"No module named '{name}'")
+            return real_import(name, *args, **kwargs)
+
+        with (
+            patch.object(builtins, "__import__", side_effect=fake_import),
+            pytest.raises(FIDO2AuthError, match="not installed"),
+        ):
+            auth._ensure_fido2()
 
     @patch("openconnect_saml.fido2_auth.FIDO2Authenticator._ensure_fido2")
     def test_detect_device_none_found(self, mock_ensure):

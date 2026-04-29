@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import json
 import multiprocessing
 import signal
@@ -12,7 +13,25 @@ from PyQt6.QtCore import Qt, QTimer, QUrl, pyqtSlot
 from PyQt6.QtNetwork import QNetworkCookie, QNetworkProxy
 from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineScript
 from PyQt6.QtWebEngineWidgets import QWebEngineView
-from PyQt6.QtWidgets import QApplication, QSizePolicy, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import (
+    QApplication,
+    QInputDialog,
+    QLineEdit,
+    QMessageBox,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
+
+# WebAuthn UX support arrived in QtWebEngine 6.7. Older versions don't expose
+# QWebEngineWebAuthUxRequest, so we feature-detect and fall back gracefully (#24).
+try:
+    from PyQt6.QtWebEngineCore import QWebEngineWebAuthUxRequest
+
+    _HAS_WEBAUTHN_UX = True
+except ImportError:  # pragma: no cover - depends on Qt build
+    QWebEngineWebAuthUxRequest = None
+    _HAS_WEBAUTHN_UX = False
 
 from openconnect_saml import config
 
@@ -172,11 +191,100 @@ class WebBrowser(QWebEngineView):
         super().__init__()
         self._on_update = on_update
         self._auto_fill_rules = auto_fill_rules
+        self._webauthn_request = None
         page = QWebEnginePage(profile, self)
         self.setPage(page)
         cookie_store = self.page().profile().cookieStore()
         cookie_store.cookieAdded.connect(self._on_cookie_added)
         self.page().loadFinished.connect(self._on_load_finished)
+        self._wire_webauthn(page)
+
+    def _wire_webauthn(self, page):
+        """Connect the QtWebEngine WebAuthn UX signal so hardware tokens work (#24).
+
+        Without this handler QtWebEngine silently drops WebAuthn challenges,
+        so Yubikey/Nitrokey LEDs never light up when DUO/Cisco asks for a
+        security key. Requires Qt 6.7+; older versions degrade to the previous
+        broken behavior with a logged warning instead of crashing.
+        """
+        if not _HAS_WEBAUTHN_UX:
+            logger.warning(
+                "QtWebEngine < 6.7 detected — hardware security keys (FIDO2/WebAuthn) "
+                "are not supported in qt mode. Use --browser chrome instead."
+            )
+            return
+        signal_name = (
+            "webAuthUxRequested"
+            if hasattr(page, "webAuthUxRequested")
+            else "webAuthnUxRequested"
+            if hasattr(page, "webAuthnUxRequested")
+            else None
+        )
+        if signal_name is None:
+            logger.warning(
+                "QtWebEngine has QWebEngineWebAuthUxRequest but no UX signal — "
+                "hardware security keys may not work."
+            )
+            return
+        getattr(page, signal_name).connect(self._on_webauthn_ux_requested)
+        logger.debug("WebAuthn UX handler connected", signal=signal_name)
+
+    @pyqtSlot(object)
+    def _on_webauthn_ux_requested(self, request):
+        """Driver for the WebAuthn UX state machine (#24)."""
+        self._webauthn_request = request
+        with contextlib.suppress(AttributeError, TypeError):
+            request.stateChanged.connect(lambda s, r=request: self._handle_webauthn_state(r))
+        self._handle_webauthn_state(request)
+
+    def _handle_webauthn_state(self, request):
+        if QWebEngineWebAuthUxRequest is None:
+            return
+        states = QWebEngineWebAuthUxRequest.WebAuthUxState
+        try:
+            state = request.state()
+        except (AttributeError, TypeError):
+            return
+
+        if state == states.SelectAccount:
+            names = list(getattr(request, "userNames", lambda: [])() or [])
+            if not names:
+                request.cancel()
+                return
+            choice, ok = QInputDialog.getItem(
+                self, "Select security key account", "Account:", names, 0, False
+            )
+            if ok and choice:
+                request.setSelectedAccount(choice)
+            else:
+                request.cancel()
+
+        elif state == states.CollectPin:
+            pin, ok = QInputDialog.getText(
+                self,
+                "Security key PIN",
+                "Enter your security key PIN:",
+                QLineEdit.EchoMode.Password,
+            )
+            if ok and pin:
+                request.setPin(pin)
+            else:
+                request.cancel()
+
+        elif state == states.FinishTokenCollection:
+            QMessageBox.information(
+                self,
+                "Touch your security key",
+                "Touch your security key (Yubikey, Nitrokey, …) to continue.",
+            )
+
+        elif state == states.RequestFailed:
+            QMessageBox.critical(
+                self,
+                "Security key error",
+                "WebAuthn request failed. Try --browser chrome if this persists.",
+            )
+            request.cancel()
 
     def createWindow(self, type):
         if type == QWebEnginePage.WebDialog:

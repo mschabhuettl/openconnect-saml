@@ -393,11 +393,18 @@ async def _run(args, cfg):
         cfg.credentials = credentials
 
     # Determine TOTP source: CLI > config > default ("local")
-    totp_source = getattr(args, "totp_source", None) or (
-        credentials.totp_source if credentials else "local"
-    )
+    if getattr(args, "no_totp", False):
+        totp_source = "none"
+    else:
+        totp_source = getattr(args, "totp_source", None) or (
+            credentials.totp_source if credentials else "local"
+        )
 
-    if credentials and totp_source == "bitwarden":
+    if credentials and totp_source == "none":
+        credentials.totp_source = "none"
+        logger.debug("TOTP prompt disabled (totp_source=none)")
+
+    elif credentials and totp_source == "bitwarden":
         bw_item_id = getattr(args, "bw_item_id", None)
         if cfg.bitwarden:
             bw_item_id = bw_item_id or cfg.bitwarden.item_id

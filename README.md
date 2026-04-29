@@ -115,10 +115,10 @@ openconnect-saml --server vpn.example.com --headless --authenticate json
 
 ### Chrome/Chromium Browser
 
-Use Playwright-based Chromium instead of Qt WebEngine. This is recommended for
-Duo, YubiKey/Nitrokey/WebAuthn and Azure/Microsoft Authenticator push or
-number-matching flows, because the visible Chrome window lets you complete the
-hardware-token/MFA step directly.
+Use Playwright-based Chromium instead of Qt WebEngine. Both backends
+support YubiKey/Nitrokey/WebAuthn and Duo/Microsoft Authenticator since
+v0.8.2 (Qt-WebEngine ≥ 6.7 required for the Qt backend). Chrome remains
+the recommended fallback if you hit Qt-platform-specific quirks.
 
 ```bash
 # Visible Chrome window
@@ -373,7 +373,8 @@ openconnect-saml completion install
 ```bash
 --headless              # No browser, terminal-only authentication
 --browser BACKEND       # Browser backend: qt, chrome, headless
---totp-source SOURCE    # TOTP provider: local, 2fauth, or bitwarden
+--totp-source SOURCE    # TOTP provider: local, 2fauth, bitwarden, 1password, pass, or none
+--no-totp               # Skip the TOTP prompt entirely (alias for --totp-source none)
 --2fauth-url URL        # 2FAuth instance URL
 --2fauth-token TOKEN    # 2FAuth Personal Access Token
 --2fauth-account-id ID  # 2FAuth account ID for VPN TOTP
@@ -648,6 +649,33 @@ are preserved. New companion commands:
 openconnect-saml profiles rename old-name new-name
 openconnect-saml profiles show work --json   # redacted view
 ```
+
+### NetworkManager (`.nmconnection`) export
+
+For the Ubuntu / GNOME VPN UI you can export a profile straight into the
+`network-manager-openconnect` plugin format:
+
+```bash
+# Single profile to a file
+openconnect-saml profiles export work \
+    --format nmconnection -o work.nmconnection
+
+# All profiles into a directory (one .nmconnection each)
+openconnect-saml profiles export \
+    --format nmconnection -o ./nm-export/
+
+# Install system-wide (requires root)
+sudo cp work.nmconnection /etc/NetworkManager/system-connections/
+sudo chmod 600 /etc/NetworkManager/system-connections/work.nmconnection
+sudo nmcli connection reload
+```
+
+The generated file uses
+`org.freedesktop.NetworkManager.openconnect`, sets the gateway, the
+auth-group (`usergroup=`), and a stable UUID derived from the profile
+name (re-exporting overwrites the same NM connection rather than
+duplicating). Secrets are not written; SAML/SSO authentication still
+happens at connect time via the openconnect plugin.
 
 ## `config` subcommand
 

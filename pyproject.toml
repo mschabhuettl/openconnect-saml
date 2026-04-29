@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "openconnect-saml"
-version = "0.8.1"
+version = "0.8.2"
 description = "OpenConnect wrapper with Azure AD (SAML) SSO support for Cisco SSL-VPNs"
 readme = "README.md"
 license = "GPL-3.0-or-later"
@@ -42,8 +42,8 @@ dependencies = [
 
 [project.optional-dependencies]
 gui = [
-    "pyqt6",
-    "pyqt6-webengine",
+    "pyqt6>=6.7",
+    "pyqt6-webengine>=6.7",
 ]
 chrome = [
     "playwright",

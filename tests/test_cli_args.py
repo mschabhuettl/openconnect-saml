@@ -2,12 +2,56 @@
 
 import pytest
 
+from openconnect_saml.cli import create_argparser as _create_argparser
 from openconnect_saml.cli import create_legacy_argparser as create_argparser
 
 
 @pytest.fixture
 def parser():
     return create_argparser()
+
+
+@pytest.fixture
+def main_parser():
+    return _create_argparser()
+
+
+class TestTotpFlags:
+    def test_totp_source_none_accepted(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com", "--totp-source", "none"])
+        assert args.totp_source == "none"
+
+    def test_no_totp_flag(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com", "--no-totp"])
+        assert args.no_totp is True
+
+    def test_no_totp_default(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com"])
+        assert args.no_totp is False
+
+    def test_profiles_add_totp_none(self, main_parser):
+        args = main_parser.parse_args(
+            ["profiles", "add", "work", "--server", "vpn.example.com", "--totp-source", "none"]
+        )
+        assert args.totp_source == "none"
+
+
+class TestExportFormatFlag:
+    def test_export_format_default_json(self, main_parser):
+        args = main_parser.parse_args(["profiles", "export", "work"])
+        assert args.format == "json"
+
+    def test_export_format_nmconnection(self, main_parser):
+        args = main_parser.parse_args(["profiles", "export", "work", "--format", "nmconnection"])
+        assert args.format == "nmconnection"
+
+    def test_export_format_short_flag(self, main_parser):
+        args = main_parser.parse_args(["profiles", "export", "work", "-f", "nmconnection"])
+        assert args.format == "nmconnection"
+
+    def test_export_format_invalid(self, main_parser):
+        with pytest.raises(SystemExit):
+            main_parser.parse_args(["profiles", "export", "work", "--format", "yaml"])
 
 
 class TestBasicArgs:

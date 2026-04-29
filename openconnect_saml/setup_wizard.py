@@ -14,7 +14,12 @@ import sys
 import structlog
 
 from openconnect_saml import config
-from openconnect_saml.config import BitwardenConfig, TwoFAuthConfig
+from openconnect_saml.config import (
+    BitwardenConfig,
+    OnePasswordConfig,
+    PassConfig,
+    TwoFAuthConfig,
+)
 
 logger = structlog.get_logger()
 
@@ -87,7 +92,7 @@ def run_setup_wizard() -> int:
     # 3. TOTP source
     totp_source = _prompt_choice(
         "TOTP source",
-        ["local", "2fauth", "bitwarden", "none"],
+        ["local", "2fauth", "bitwarden", "1password", "pass", "none"],
         default="local",
     )
 
@@ -116,6 +121,24 @@ def run_setup_wizard() -> int:
         print("  Bitwarden Configuration:")
         bw_item_id = _prompt("  Bitwarden item ID (UUID)", required=True)
         bitwarden_cfg = BitwardenConfig(item_id=bw_item_id)
+
+    # 4c. 1Password config
+    onepassword_cfg = None
+    if totp_source == "1password":
+        print()
+        print("  1Password Configuration (requires the 'op' CLI):")
+        op_item = _prompt("  1Password item name or UUID", required=True)
+        op_vault = _prompt("  Vault (optional)")
+        op_account = _prompt("  Account sign-in URL (optional, for multi-account)")
+        onepassword_cfg = OnePasswordConfig(item=op_item, vault=op_vault, account=op_account)
+
+    # 4d. pass (password-store) config
+    pass_cfg = None
+    if totp_source == "pass":
+        print()
+        print("  pass Configuration (requires pass-otp):")
+        pass_entry = _prompt("  pass entry path (e.g. work/vpn-totp)", required=True)
+        pass_cfg = PassConfig(entry=pass_entry)
 
     # 5. Browser mode
     browser_mode = _prompt_choice(
@@ -156,7 +179,8 @@ def run_setup_wizard() -> int:
     cred_data = None
     if username:
         cred_data = {"username": username}
-        if totp_source and totp_source != "none":
+        if totp_source:
+            # Save explicit "none" too so future runs don't re-prompt for TOTP.
             cred_data["totp_source"] = totp_source
 
     profile_data = {
@@ -174,7 +198,7 @@ def run_setup_wizard() -> int:
         cfg.default_profile = config.HostProfile(server, "", profile_name)
         if username:
             cfg.credentials = config.Credentials(username)
-            if totp_source and totp_source != "none":
+            if totp_source:
                 cfg.credentials.totp_source = totp_source
 
     # Save 2FAuth config
@@ -184,6 +208,14 @@ def run_setup_wizard() -> int:
     # Save Bitwarden config
     if bitwarden_cfg:
         cfg.bitwarden = bitwarden_cfg
+
+    # Save 1Password config
+    if onepassword_cfg:
+        cfg.onepassword = onepassword_cfg
+
+    # Save pass config
+    if pass_cfg:
+        cfg.pass_ = pass_cfg
 
     # Notifications
     cfg.notifications = notifications

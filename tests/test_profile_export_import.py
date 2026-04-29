@@ -152,6 +152,103 @@ class TestExport:
         assert creds_out["username"] == "alice"
 
 
+class TestNetworkManagerExport:
+    def _args(self, **kw):
+        defaults = {"profile_name": None, "file": None, "format": "nmconnection"}
+        defaults.update(kw)
+        return type("Args", (), defaults)()
+
+    def test_export_nmconnection_to_stdout(self, capsys):
+        cfg = _mk_cfg(
+            {
+                "work": {
+                    "server": "vpn.example.com",
+                    "user_group": "engineering",
+                    "name": "Work",
+                    "credentials": {"username": "alice@example.com"},
+                }
+            }
+        )
+        with patch("openconnect_saml.profiles.config.load", return_value=cfg):
+            rc = profiles._export_profile(self._args(profile_name="work"))
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "[connection]" in out
+        assert "id=Work" in out
+        assert "type=vpn" in out
+        assert "service-type=org.freedesktop.NetworkManager.openconnect" in out
+        assert "gateway=vpn.example.com" in out
+        assert "usergroup=engineering" in out
+        # Username goes into vpn-secrets
+        assert "form:main:username=alice@example.com" in out
+        # No raw passwords/tokens
+        assert "password" not in out.lower() or "authtype=password" in out
+
+    def test_export_nmconnection_strips_protocol_prefix(self, capsys):
+        cfg = _mk_cfg(
+            {"work": {"server": "https://vpn.example.com/", "user_group": "", "name": ""}}
+        )
+        with patch("openconnect_saml.profiles.config.load", return_value=cfg):
+            profiles._export_profile(self._args(profile_name="work"))
+        out = capsys.readouterr().out
+        assert "gateway=vpn.example.com" in out
+        # Should not retain trailing slash or scheme
+        assert "gateway=https://" not in out
+
+    def test_export_nmconnection_stable_uuid(self, capsys):
+        cfg = _mk_cfg({"work": {"server": "vpn.example.com"}})
+        with patch("openconnect_saml.profiles.config.load", return_value=cfg):
+            profiles._export_profile(self._args(profile_name="work"))
+            first = capsys.readouterr().out
+            profiles._export_profile(self._args(profile_name="work"))
+            second = capsys.readouterr().out
+        # UUID is derived from the profile name, so re-exports must match.
+        assert first == second
+        assert "uuid=" in first
+
+    def test_export_nmconnection_to_file(self, tmp_path):
+        cfg = _mk_cfg({"work": {"server": "vpn.example.com"}})
+        out = tmp_path / "work.nmconnection"
+        with patch("openconnect_saml.profiles.config.load", return_value=cfg):
+            rc = profiles._export_profile(self._args(profile_name="work", file=str(out)))
+        assert rc == 0
+        assert out.exists()
+        # Mode 0600 since file may be installed under system-connections
+        assert oct(out.stat().st_mode)[-3:] == "600"
+        assert "[connection]" in out.read_text()
+
+    def test_export_nmconnection_multiple_to_directory(self, tmp_path):
+        cfg = _mk_cfg(
+            {
+                "work": {"server": "vpn.example.com"},
+                "home": {"server": "home.example.com"},
+            }
+        )
+        out_dir = tmp_path / "nm"
+        with patch("openconnect_saml.profiles.config.load", return_value=cfg):
+            rc = profiles._export_profile(self._args(file=str(out_dir)))
+        assert rc == 0
+        assert (out_dir / "work.nmconnection").exists()
+        assert (out_dir / "home.nmconnection").exists()
+
+    def test_export_nmconnection_multiple_to_stdout_fails(self, capsys):
+        cfg = _mk_cfg(
+            {
+                "work": {"server": "vpn.example.com"},
+                "home": {"server": "home.example.com"},
+            }
+        )
+        with patch("openconnect_saml.profiles.config.load", return_value=cfg):
+            rc = profiles._export_profile(self._args())
+        assert rc == 1
+
+    def test_export_nmconnection_missing_profile(self, capsys):
+        cfg = _mk_cfg()
+        with patch("openconnect_saml.profiles.config.load", return_value=cfg):
+            rc = profiles._export_profile(self._args(profile_name="nope"))
+        assert rc == 1
+
+
 class TestImport:
     def test_import_from_file(self, tmp_path, capsys):
         f = tmp_path / "in.json"
