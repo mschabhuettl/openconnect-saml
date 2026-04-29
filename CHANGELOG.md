@@ -5,6 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.3] – 2026-04-29
+
+### Changed
+
+- **Refactored `config.py`** — five near-identical `_convert_<provider>`
+  helpers replaced with a single `_node_converter(cls)` factory; the
+  TOML-key/Python-attr renaming (`2fauth` ↔ `twofauth`,
+  `1password` ↔ `onepassword`, `pass` ↔ `pass_`) is now table-driven
+  via `_TOML_KEY_ALIASES`, removing duplicated `from_dict` / `as_dict`
+  bodies on `ProfileConfig` and `Config`. Behaviour is identical;
+  the TOML serialization round-trips byte-for-byte.
+- **Centralized XXE-safe XML parser** — `_make_safe_parser()` in
+  `authenticator.py` and `profile.py` consolidated into
+  `openconnect_saml.xml_utils.make_safe_parser()`. Same
+  `resolve_entities=False`, `no_network=True` defaults.
+- **GUI now respects the chosen browser backend** — the `gui` launcher
+  no longer hardcodes `--browser chrome`; it offers a Browser dropdown
+  (chrome / qt / headless) so users on platforms where Playwright is
+  broken (e.g. Ubuntu 26.04, #22) can pick Qt or headless instead.
+- **`logger.warn()` → `logger.warning()`** — replaced 16 deprecated
+  calls across `app.py` and `browser/browser.py` so Python 3.14+
+  doesn't emit `DeprecationWarning` at runtime.
+
+### Fixed
+
+- **AUR `.SRCINFO` generation** — the workflow used to write
+  `sha256sums = SKIP` while `PKGBUILD` carried the real checksum, and
+  emitted a non-existent `download = …` field. Now both files share the
+  same `sha256` and `.SRCINFO` is produced in a single atomic commit
+  alongside `PKGBUILD` (no more two-commit churn per release).
+- **Windows test failure** — `test_export_nmconnection_to_file` asserted
+  POSIX `0o600` mode bits; split into a portable test plus a
+  POSIX-only test gated on `platform.system() != "Windows"`.
+
+### Notes
+
+- No CLI / config / profile-format changes; pure-internal release.
+  Existing installs upgrade transparently.
+
 ## [0.8.2] – 2026-04-29
 
 ### Added
@@ -134,7 +173,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Various small improvements.
 
-## [0.6.0] – 2024
+## [0.6.0] – 2024-01-01
 
 Initial public release of the maintained fork, combining features from
 [vlaci/openconnect-sso](https://github.com/vlaci/openconnect-sso) and

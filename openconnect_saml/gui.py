@@ -15,6 +15,9 @@ from tkinter import messagebox, ttk
 
 from openconnect_saml import config
 
+BROWSER_CHOICES = ("chrome", "qt", "headless")
+DEFAULT_BROWSER = "chrome"
+
 
 class ProfileGui:
     def __init__(self, root: tk.Tk):
@@ -29,13 +32,14 @@ class ProfileGui:
 
         self.profile_var = tk.StringVar(value=names[0] if names else "")
         self.status_var = tk.StringVar(value="Disconnected")
+        self.browser_var = tk.StringVar(value=DEFAULT_BROWSER)
 
         frame = ttk.Frame(root, padding=12)
         frame.grid(row=0, column=0, sticky="nsew")
         root.columnconfigure(0, weight=1)
         root.rowconfigure(0, weight=1)
         frame.columnconfigure(1, weight=1)
-        frame.rowconfigure(3, weight=1)
+        frame.rowconfigure(4, weight=1)
 
         ttk.Label(frame, text="Profile").grid(row=0, column=0, sticky="w")
         self.profile_box = ttk.Combobox(
@@ -43,23 +47,32 @@ class ProfileGui:
         )
         self.profile_box.grid(row=0, column=1, columnspan=3, sticky="ew", padx=(8, 0))
 
-        ttk.Label(frame, text="Status").grid(row=1, column=0, sticky="w", pady=(8, 0))
+        ttk.Label(frame, text="Browser").grid(row=1, column=0, sticky="w", pady=(8, 0))
+        self.browser_box = ttk.Combobox(
+            frame,
+            textvariable=self.browser_var,
+            values=BROWSER_CHOICES,
+            state="readonly",
+        )
+        self.browser_box.grid(row=1, column=1, columnspan=3, sticky="ew", padx=(8, 0), pady=(8, 0))
+
+        ttk.Label(frame, text="Status").grid(row=2, column=0, sticky="w", pady=(8, 0))
         ttk.Label(frame, textvariable=self.status_var).grid(
-            row=1, column=1, sticky="w", pady=(8, 0)
+            row=2, column=1, sticky="w", pady=(8, 0)
         )
 
         self.connect_btn = ttk.Button(frame, text="Connect", command=self.connect)
-        self.connect_btn.grid(row=2, column=0, pady=8, sticky="ew")
+        self.connect_btn.grid(row=3, column=0, pady=8, sticky="ew")
         self.disconnect_btn = ttk.Button(
             frame, text="Disconnect", command=self.disconnect, state="disabled"
         )
-        self.disconnect_btn.grid(row=2, column=1, pady=8, padx=8, sticky="ew")
+        self.disconnect_btn.grid(row=3, column=1, pady=8, padx=8, sticky="ew")
         ttk.Button(frame, text="Refresh", command=self.refresh_profiles).grid(
-            row=2, column=2, pady=8, sticky="ew"
+            row=3, column=2, pady=8, sticky="ew"
         )
 
         self.log = tk.Text(frame, height=16, width=72)
-        self.log.grid(row=3, column=0, columnspan=4, sticky="nsew")
+        self.log.grid(row=4, column=0, columnspan=4, sticky="nsew")
         self.log.insert("end", "Select a saved profile and press Connect.\n")
         if not names:
             self.log.insert(
@@ -85,7 +98,8 @@ class ProfileGui:
         if not name:
             messagebox.showwarning("openconnect-saml", "No saved profile selected.")
             return
-        cmd = [sys.executable, "-m", "openconnect_saml.cli", "connect", name, "--browser", "chrome"]
+        browser = self.browser_var.get() or DEFAULT_BROWSER
+        cmd = [sys.executable, "-m", "openconnect_saml.cli", "connect", name, "--browser", browser]
         self.log.insert("end", f"$ {' '.join(cmd)}\n")
         self.proc = subprocess.Popen(
             cmd,

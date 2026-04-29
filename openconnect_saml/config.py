@@ -1,6 +1,10 @@
+from __future__ import annotations
+
 import binascii
 import enum
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse, urlunparse
 
 import attr
@@ -253,44 +257,25 @@ class Credentials(ConfigNode):
                 logger.info("Cannot save totp secret to keyring.")
 
 
-def _convert_twofauth(val):
-    if val is None:
-        return None
-    if isinstance(val, TwoFAuthConfig):
-        return val
-    return TwoFAuthConfig.from_dict(val)
+def _node_converter(cls: type) -> Callable[[Any], Any]:
+    """Return an attrs converter that turns ``None`` / dict / instance into ``cls``."""
+
+    def _convert(val: Any) -> Any:
+        if val is None:
+            return None
+        if isinstance(val, cls):
+            return val
+        return cls.from_dict(val)
+
+    _convert.__name__ = f"_convert_{cls.__name__.lower()}"
+    return _convert
 
 
-def _convert_bitwarden(val):
-    if val is None:
-        return None
-    if isinstance(val, BitwardenConfig):
-        return val
-    return BitwardenConfig.from_dict(val)
-
-
-def _convert_onepassword(val):
-    if val is None:
-        return None
-    if isinstance(val, OnePasswordConfig):
-        return val
-    return OnePasswordConfig.from_dict(val)
-
-
-def _convert_pass(val):
-    if val is None:
-        return None
-    if isinstance(val, PassConfig):
-        return val
-    return PassConfig.from_dict(val)
-
-
-def _convert_killswitch(val):
-    if val is None:
-        return None
-    if isinstance(val, KillSwitchSettings):
-        return val
-    return KillSwitchSettings.from_dict(val)
+_convert_twofauth = _node_converter(TwoFAuthConfig)
+_convert_bitwarden = _node_converter(BitwardenConfig)
+_convert_onepassword = _node_converter(OnePasswordConfig)
+_convert_pass = _node_converter(PassConfig)
+_convert_killswitch = _node_converter(KillSwitchSettings)
 
 
 def _convert_str_list(val):
@@ -299,6 +284,34 @@ def _convert_str_list(val):
     if isinstance(val, list):
         return [str(v) for v in val]
     return val
+
+
+# Aliases used in TOML to map cleanly onto Python identifiers (digits + reserved
+# words can't appear at the start of a variable name).
+_TOML_KEY_ALIASES: tuple[tuple[str, str], ...] = (
+    ("2fauth", "twofauth"),
+    ("1password", "onepassword"),
+    ("pass", "pass_"),
+)
+
+
+def _rename_toml_to_py(d: dict) -> dict:
+    """Translate TOML-style section names to attrs field names."""
+    d = dict(d)
+    for toml_key, py_key in _TOML_KEY_ALIASES:
+        if toml_key in d:
+            d[py_key] = d.pop(toml_key)
+    return d
+
+
+def _rename_py_to_toml(d: dict) -> dict:
+    """Translate attrs field names back to TOML-style section names."""
+    for toml_key, py_key in _TOML_KEY_ALIASES:
+        if py_key in d:
+            val = d.pop(py_key)
+            if val is not None:
+                d[toml_key] = val
+    return d
 
 
 @attr.s
@@ -320,30 +333,11 @@ class ProfileConfig(ConfigNode):
     def from_dict(cls, d):
         if d is None:
             return None
-        d = dict(d)
-        if "2fauth" in d:
-            d["twofauth"] = d.pop("2fauth")
-        if "1password" in d:
-            d["onepassword"] = d.pop("1password")
-        if "pass" in d:
-            d["pass_"] = d.pop("pass")
-        return cls(**d)
+        return cls(**_rename_toml_to_py(d))
 
     def as_dict(self):
         d = attr.asdict(self, filter=lambda a, v: a.init)
-        if "twofauth" in d:
-            val = d.pop("twofauth")
-            if val is not None:
-                d["2fauth"] = val
-        if "onepassword" in d:
-            val = d.pop("onepassword")
-            if val is not None:
-                d["1password"] = val
-        if "pass_" in d:
-            val = d.pop("pass_")
-            if val is not None:
-                d["pass"] = val
-        return d
+        return _rename_py_to_toml(d)
 
     def to_host_profile(self):
         """Convert to a HostProfile for authentication."""
@@ -384,38 +378,11 @@ class Config(ConfigNode):
     def from_dict(cls, d):
         if d is None:
             return None
-        d = dict(d)
-        if "2fauth" in d:
-            d["twofauth"] = d.pop("2fauth")
-        if "1password" in d:
-            d["onepassword"] = d.pop("1password")
-        if "pass" in d:
-            d["pass_"] = d.pop("pass")
-        return cls(**d)
+        return cls(**_rename_toml_to_py(d))
 
     def as_dict(self):
         d = attr.asdict(self, filter=lambda a, v: a.init)
-        if "twofauth" in d:
-            val = d.pop("twofauth")
-            if val is not None:
-                d["2fauth"] = val
-        if "onepassword" in d:
-            val = d.pop("onepassword")
-            if val is not None:
-                d["1password"] = val
-        if "pass_" in d:
-            val = d.pop("pass_")
-            if val is not None:
-                d["pass"] = val
-        if "profiles" in d and d["profiles"]:
-            serialized = {}
-            for name, prof in d["profiles"].items():
-                if isinstance(prof, dict):
-                    serialized[name] = prof
-                else:
-                    serialized[name] = prof
-            d["profiles"] = serialized
-        return d
+        return _rename_py_to_toml(d)
 
     def get_profile(self, name):
         """Get a named profile, or None."""

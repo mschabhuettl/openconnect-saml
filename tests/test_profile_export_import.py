@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+import platform
 from unittest.mock import patch
+
+import pytest
 
 from openconnect_saml import config, profiles
 
@@ -213,9 +216,16 @@ class TestNetworkManagerExport:
             rc = profiles._export_profile(self._args(profile_name="work", file=str(out)))
         assert rc == 0
         assert out.exists()
-        # Mode 0600 since file may be installed under system-connections
-        assert oct(out.stat().st_mode)[-3:] == "600"
         assert "[connection]" in out.read_text()
+
+    @pytest.mark.skipif(platform.system() == "Windows", reason="POSIX permissions only")
+    def test_export_nmconnection_to_file_has_owner_only_mode(self, tmp_path):
+        cfg = _mk_cfg({"work": {"server": "vpn.example.com"}})
+        out = tmp_path / "work.nmconnection"
+        with patch("openconnect_saml.profiles.config.load", return_value=cfg):
+            profiles._export_profile(self._args(profile_name="work", file=str(out)))
+        # Mode 0600 since the file may be installed under system-connections.
+        assert oct(out.stat().st_mode)[-3:] == "600"
 
     def test_export_nmconnection_multiple_to_directory(self, tmp_path):
         cfg = _mk_cfg(

@@ -9,13 +9,13 @@ from lxml import etree
 
 from openconnect_saml.authenticator import (
     AuthResponseError,
-    _make_safe_parser,
     parse_auth_complete_response,
     parse_auth_request_response,
 )
 from openconnect_saml.config import Config, Credentials, save
 from openconnect_saml.profile import _get_profiles_from_one_file
-from openconnect_saml.profile import _make_safe_parser as _profile_safe_parser
+from openconnect_saml.xml_utils import make_safe_parser as _make_safe_parser
+from openconnect_saml.xml_utils import make_safe_parser as _profile_safe_parser
 
 # === XXE Protection ===
 

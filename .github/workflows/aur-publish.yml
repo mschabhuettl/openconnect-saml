@@ -71,7 +71,40 @@ jobs:
           sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
           sed -i "s/^sha256sums=.*/sha256sums=('${SHA}')/" PKGBUILD
 
-          # Commit and push (only if there are changes)
+          # Generate .SRCINFO with the matching sha256, in a single atomic
+          # commit alongside the PKGBUILD update.
+          {
+            echo "pkgbase = openconnect-saml"
+            echo "	pkgdesc = OpenConnect wrapper with Azure AD (SAML) SSO support for Cisco SSL-VPNs"
+            echo "	pkgver = ${VERSION}"
+            echo "	pkgrel = 1"
+            echo "	url = https://github.com/mschabhuettl/openconnect-saml"
+            echo "	arch = any"
+            echo "	license = GPL-3.0-or-later"
+            echo "	depends = python>=3.10"
+            echo "	depends = openconnect"
+            echo "	depends = python-attrs"
+            echo "	depends = python-colorama"
+            echo "	depends = python-keyring"
+            echo "	depends = python-lxml"
+            echo "	depends = python-prompt_toolkit"
+            echo "	depends = python-pyotp"
+            echo "	depends = python-pyqt6"
+            echo "	depends = python-pyqt6-webengine"
+            echo "	depends = python-pysocks"
+            echo "	depends = python-pyxdg"
+            echo "	depends = python-requests"
+            echo "	depends = python-structlog"
+            echo "	depends = python-toml"
+            echo "	makedepends = python-build"
+            echo "	makedepends = python-installer"
+            echo "	makedepends = python-hatchling"
+            echo "	source = openconnect-saml-${VERSION}.tar.gz::https://github.com/mschabhuettl/openconnect-saml/archive/v${VERSION}.tar.gz"
+            echo "	sha256sums = ${SHA}"
+            echo ""
+            echo "pkgname = openconnect-saml"
+          } > .SRCINFO
+
           if git diff --quiet && git diff --cached --quiet; then
             echo "No changes to commit"
           else
@@ -79,38 +112,3 @@ jobs:
             git commit -m "Update to ${VERSION}"
             git push origin master
           fi
-
-          # Generate .SRCINFO
-          echo 'pkgbase = openconnect-saml' > .SRCINFO
-          echo ' pkgdesc = OpenConnect wrapper with Azure AD (SAML) SSO support for Cisco SSL-VPNs' >> .SRCINFO
-          echo " pkgver = ${VERSION}" >> .SRCINFO
-          echo ' pkgrel = 1' >> .SRCINFO
-          echo ' url = https://github.com/mschabhuettl/openconnect-saml' >> .SRCINFO
-          echo ' arch = any' >> .SRCINFO
-          echo ' license = GPL-3.0-or-later' >> .SRCINFO
-          echo ' depends = python>=3.10' >> .SRCINFO
-          echo ' depends = openconnect' >> .SRCINFO
-          echo ' depends = python-attrs' >> .SRCINFO
-          echo ' depends = python-colorama' >> .SRCINFO
-          echo ' depends = python-keyring' >> .SRCINFO
-          echo ' depends = python-lxml' >> .SRCINFO
-          echo ' depends = python-prompt_toolkit' >> .SRCINFO
-          echo ' depends = python-pyotp' >> .SRCINFO
-          echo ' depends = python-pyqt6' >> .SRCINFO
-          echo ' depends = python-pyqt6-webengine' >> .SRCINFO
-          echo ' depends = python-pysocks' >> .SRCINFO
-          echo ' depends = python-pyxdg' >> .SRCINFO
-          echo ' depends = python-requests' >> .SRCINFO
-          echo ' depends = python-structlog' >> .SRCINFO
-          echo ' depends = python-toml' >> .SRCINFO
-          echo ' makedepends = python-build' >> .SRCINFO
-          echo ' makedepends = python-installer' >> .SRCINFO
-          echo ' makedepends = python-hatchling' >> .SRCINFO
-          echo " source = openconnect-saml-${VERSION}.tar.gz::https://github.com/mschabhuettl/openconnect-saml/archive/v${VERSION}.tar.gz" >> .SRCINFO
-          echo ' sha256sums = SKIP' >> .SRCINFO
-          echo >> .SRCINFO
-          echo 'pkgname = openconnect-saml' >> .SRCINFO
-          echo " download = https://github.com/mschabhuettl/openconnect-saml/archive/v${VERSION}.tar.gz" >> .SRCINFO
-          git add .SRCINFO
-          git commit -m "Update .SRCINFO"
-          git push origin master

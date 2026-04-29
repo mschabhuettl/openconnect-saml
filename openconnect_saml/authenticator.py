@@ -9,6 +9,7 @@ import structlog
 from lxml import etree, objectify
 
 from openconnect_saml.saml_authenticator import authenticate_in_browser
+from openconnect_saml.xml_utils import make_safe_parser
 
 # Sentinel for headless mode
 HEADLESS_MODE = "headless"
@@ -247,22 +248,13 @@ def _create_auth_init_request(host, url, version, no_cert=False):
     return etree.tostring(root, pretty_print=True, xml_declaration=True, encoding="UTF-8")
 
 
-def _make_safe_parser(recover=False):
-    """Create an XML parser with XXE protections."""
-    return objectify.makeparser(
-        resolve_entities=False,
-        no_network=True,
-        recover=recover,
-    )
-
-
 def parse_response(resp):
     resp.raise_for_status()
     try:
-        xml = objectify.fromstring(resp.content, parser=_make_safe_parser())
+        xml = objectify.fromstring(resp.content, parser=make_safe_parser())
     except etree.XMLSyntaxError:
         # Fallback: use recovery parser for malformed XML (e.g. <br> tags) (#171)
-        xml = objectify.fromstring(resp.content, parser=_make_safe_parser(recover=True))
+        xml = objectify.fromstring(resp.content, parser=make_safe_parser(recover=True))
     t = xml.get("type")
     if t == "auth-request":
         return parse_auth_request_response(xml, response_url=getattr(resp, "url", None))

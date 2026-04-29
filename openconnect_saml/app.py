@@ -49,14 +49,14 @@ def run(args):
     try:
         auth_response, selected_profile = asyncio.run(_run(args, cfg))
     except KeyboardInterrupt:
-        logger.warn("CTRL-C pressed, exiting")
+        logger.warning("CTRL-C pressed, exiting")
         return 130
     except ValueError as e:
         msg, retval = e.args
         logger.error(msg)
         return retval
     except Terminated:
-        logger.warn("Browser window terminated, exiting")
+        logger.warning("Browser window terminated, exiting")
         return 2
     except AuthResponseError as exc:
         logger.error(
@@ -71,7 +71,7 @@ def run(args):
     config.save(cfg)
 
     if args.authenticate:
-        logger.warn("Exiting after login, as requested")
+        logger.warning("Exiting after login, as requested")
         details = {
             "host": selected_profile.vpn_url,
             "cookie": auth_response.session_token,
@@ -158,7 +158,7 @@ def run(args):
         )
         return rc
     except KeyboardInterrupt:
-        logger.warn("CTRL-C pressed, exiting")
+        logger.warning("CTRL-C pressed, exiting")
         return 0
     finally:
         if notify:
@@ -272,7 +272,7 @@ def _run_with_reconnect(
                     useragent=getattr(args, "useragent", None),
                 )
             except KeyboardInterrupt:
-                logger.warn("CTRL-C pressed, stopping reconnect loop")
+                logger.warning("CTRL-C pressed, stopping reconnect loop")
                 if notify:
                     notify_disconnected(selected_profile.vpn_url)
                 if tracker:
@@ -304,7 +304,7 @@ def _run_with_reconnect(
 
             backoff_idx = min(attempt - 1, len(RECONNECT_BACKOFF) - 1)
             delay = RECONNECT_BACKOFF[backoff_idx]
-            logger.warn(
+            logger.warning(
                 "VPN connection dropped, reconnecting",
                 attempt=attempt,
                 delay=delay,
@@ -319,7 +319,7 @@ def _run_with_reconnect(
             try:
                 time.sleep(delay)
             except KeyboardInterrupt:
-                logger.warn("CTRL-C pressed during backoff, exiting")
+                logger.warning("CTRL-C pressed during backoff, exiting")
                 if tracker:
                     tracker.stop("user interrupted during backoff")
                 handle_disconnect(cfg.on_disconnect)
@@ -328,7 +328,7 @@ def _run_with_reconnect(
             try:
                 auth_response, selected_profile = asyncio.run(_run(args, cfg))
             except KeyboardInterrupt:
-                logger.warn("CTRL-C pressed during re-authentication, exiting")
+                logger.warning("CTRL-C pressed during re-authentication, exiting")
                 if tracker:
                     tracker.stop("user interrupted during re-auth")
                 handle_disconnect(cfg.on_disconnect)

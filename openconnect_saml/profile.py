@@ -4,25 +4,17 @@ import structlog
 from lxml import etree, objectify
 
 from openconnect_saml.config import HostProfile
+from openconnect_saml.xml_utils import make_safe_parser
 
 logger = structlog.get_logger()
 
 ns = {"enc": "http://schemas.xmlsoap.org/encoding/"}
 
 
-def _make_safe_parser():
-    """Create an XML parser with XXE protections (no network, no entities)."""
-    parser = objectify.makeparser(
-        resolve_entities=False,
-        no_network=True,
-    )
-    return parser
-
-
 def _get_profiles_from_one_file(path):
     logger.info("Loading profiles from file", path=path.name)
 
-    safe_parser = _make_safe_parser()
+    safe_parser = make_safe_parser()
     try:
         with path.open() as f:
             xml = objectify.parse(f, parser=safe_parser)

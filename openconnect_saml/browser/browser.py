@@ -48,7 +48,7 @@ class Browser:
                 state = await self.browser_proc.get_state_async()
             except EOFError:
                 if self.running:
-                    logger.warn("Connection terminated with browser")
+                    logger.warning("Connection terminated with browser")
                     self.running = False
                 else:
                     logger.info("Browser exited")
