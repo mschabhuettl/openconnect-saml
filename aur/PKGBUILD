@@ -1,35 +1,26 @@
-# Maintainer: Matthias Schabhüttl <https://github.com/mschabhuettl>
+# Maintainer: Matthias Schabhuettl <aur@schabhuettl.net>
 
 pkgname=openconnect-saml
-pkgver=0.7.0
+pkgver=0.8.1
 pkgrel=1
-pkgdesc="OpenConnect wrapper with Azure AD (SAML) SSO support for Cisco SSL-VPNs"
+pkgdesc="OpenConnect wrapper with Azure AD / SAML SSO support"
 arch=('any')
 url="https://github.com/mschabhuettl/openconnect-saml"
-license=('GPL-3.0-or-later')
-depends=(
-    'python>=3.10'
-    'openconnect'
-    'python-attrs'
-    'python-colorama'
-    'python-keyring'
-    'python-lxml'
-    'python-prompt_toolkit'
-    'python-pyotp'
-    'python-pyqt6'
-    'python-pyqt6-webengine'
-    'python-pysocks'
-    'python-pyxdg'
-    'python-requests'
-    'python-structlog'
-    'python-toml'
-)
-makedepends=(
-    'python-build'
-    'python-installer'
-    'python-hatchling'
-)
-source=("$pkgname-$pkgver.tar.gz::https://github.com/mschabhuettl/$pkgname/archive/v$pkgver.tar.gz")
+license=('MIT')
+depends=('python' 'openconnect' 'python-keyring' 'python-lxml' 'python-pyotp'
+         'python-requests' 'python-structlog' 'python-toml' 'python-xdg'
+         'python-attrs' 'python-prompt_toolkit')
+optdepends=('python-pyqt6: GUI browser backend'
+            'python-playwright: Chrome browser backend'
+            'python-fido2: FIDO2/YubiKey support'
+            'python-rich: status TUI'
+            'iptables: kill-switch feature'
+            'bitwarden-cli: Bitwarden TOTP provider'
+            '1password-cli: 1Password TOTP provider'
+            'pass: pass-otp TOTP provider'
+            'pass-otp: pass-otp extension for TOTP')
+makedepends=('python-build' 'python-installer' 'python-setuptools' 'python-wheel')
+source=("https://github.com/mschabhuettl/openconnect-saml/archive/refs/tags/v${pkgver}.tar.gz")
 sha256sums=('SKIP')
 
 build() {
@@ -40,4 +31,6 @@ build() {
 package() {
     cd "$pkgname-$pkgver"
     python -m installer --destdir="$pkgdir" dist/*.whl
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+    install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
 }

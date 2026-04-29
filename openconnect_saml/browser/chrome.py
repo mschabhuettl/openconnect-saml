@@ -26,6 +26,10 @@ _USERNAME_SELECTORS = [
     "input[name=login]",
     "input[name=username]",
     "input[name=user]",
+    "input[id=username]",
+    "input[id=Username]",
+    "input[id=userInput]",
+    "input[autocomplete=username]",
 ]
 
 _PASSWORD_SELECTORS = [
@@ -50,6 +54,13 @@ _CLICK_SELECTORS = [
     "div[data-value=PhoneAppOTP]",
     "a[id=signInAnotherWay]",
     "input[id=KmsiCheckboxField]",
+]
+
+_MFA_CHALLENGE_SELECTORS = [
+    "text=/number matching/i",
+    "text=/enter the number/i",
+    "text=/approve sign in request/i",
+    "text=/check your.*app/i",
 ]
 
 
@@ -138,6 +149,7 @@ class ChromeBrowser:
         await self._page.goto(url, wait_until="domcontentloaded")
 
         max_steps = 30
+        clicked_selectors: set[str] = set()
         for step in range(max_steps):
             current_url = self._page.url
             logger.debug("Chrome: auth step", step=step, url=current_url)
@@ -157,9 +169,11 @@ class ChromeBrowser:
                         self.url = current_url
                         return self.cookies
 
-            # Auto-fill credentials
+            # Auto-fill credentials and report MFA prompts without repeatedly refreshing the page.
+            filled_any = False
             if credentials:
-                await self._auto_fill(credentials)
+                filled_any = await self._auto_fill(credentials)
+            await self._detect_mfa_challenge()
 
             # Wait for navigation or page change
             try:
@@ -172,8 +186,9 @@ class ChromeBrowser:
             # Check if URL changed (navigation happened)
             new_url = self._page.url
             if new_url == current_url:
-                # No navigation — try clicking submit buttons
-                await self._try_click_selectors(_CLICK_SELECTORS + _SUBMIT_SELECTORS)
+                # No navigation — click helper choices once, and only submit after filling data.
+                selectors = _CLICK_SELECTORS + (_SUBMIT_SELECTORS if filled_any else [])
+                await self._try_click_selectors(selectors, clicked_selectors)
                 import contextlib
 
                 with contextlib.suppress(Exception):
@@ -188,8 +203,9 @@ class ChromeBrowser:
         self.url = self._page.url
         return self.cookies
 
-    async def _auto_fill(self, credentials: Credentials):
-        """Auto-fill form fields with credentials."""
+    async def _auto_fill(self, credentials: Credentials) -> bool:
+        """Auto-fill form fields with credentials. Returns True if a field changed."""
+        filled_any = False
         # Fill username
         if credentials.username:
             for sel in _USERNAME_SELECTORS:
@@ -199,6 +215,7 @@ class ChromeBrowser:
                         current_val = await el.input_value()
                         if not current_val:
                             await el.fill(credentials.username)
+                            filled_any = True
                             logger.debug("Chrome: filled username", selector=sel)
                             break
                 except Exception:  # nosec
@@ -213,6 +230,7 @@ class ChromeBrowser:
                         current_val = await el.input_value()
                         if not current_val:
                             await el.fill(credentials.password)
+                            filled_any = True
                             logger.debug("Chrome: filled password", selector=sel)
                             break
                 except Exception:  # nosec
@@ -227,18 +245,37 @@ class ChromeBrowser:
                         current_val = await el.input_value()
                         if not current_val:
                             await el.fill(credentials.totp)
+                            filled_any = True
                             logger.debug("Chrome: filled TOTP", selector=sel)
                             break
                 except Exception:  # nosec
                     continue
+        return filled_any
 
-    async def _try_click_selectors(self, selectors: list[str]):
+    async def _detect_mfa_challenge(self):
+        """Log a clear hint when the page is waiting for push/number MFA (#17)."""
+        for sel in _MFA_CHALLENGE_SELECTORS:
+            try:
+                if await self._page.locator(sel).first.is_visible(timeout=200):
+                    logger.info(
+                        "Chrome: MFA challenge detected; approve it in your authenticator/security-key flow"
+                    )
+                    return True
+            except Exception:  # nosec
+                continue
+        return False
+
+    async def _try_click_selectors(self, selectors: list[str], clicked: set[str] | None = None):
         """Try to click elements matching the given selectors."""
+        clicked = clicked if clicked is not None else set()
         for sel in selectors:
+            if sel in clicked:
+                continue
             try:
                 el = self._page.locator(sel).first
                 if await el.is_visible(timeout=300):
                     await el.click()
+                    clicked.add(sel)
                     logger.debug("Chrome: clicked element", selector=sel)
                     return True
             except Exception:  # nosec

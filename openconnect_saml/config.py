@@ -40,7 +40,7 @@ def save(config):
     config_path = Path(path) / "config.toml"
     try:
         config_path.touch(mode=0o600)
-        config_path.chmod(0o600)  # Ensure permissions even if file existed
+        config_path.chmod(0o600)
         with config_path.open("w") as config_file:
             toml.dump(config.as_dict(), config_file)
     except Exception:
@@ -63,7 +63,7 @@ class ConfigNode:
 class HostProfile(ConfigNode):
     address = attr.ib(converter=str)
     user_group = attr.ib(converter=str)
-    name = attr.ib(converter=str)  # authgroup
+    name = attr.ib(converter=str)
 
     @property
     def vpn_url(self):
@@ -95,9 +95,7 @@ def get_default_auto_fill_rules():
             AutoFillRule(selector="div[data-value=PhoneAppOTP]", action="click").as_dict(),
             AutoFillRule(selector="a[id=signInAnotherWay]", action="click").as_dict(),
             AutoFillRule(selector="input[id=idTxtBx_SAOTCC_OTC]", fill="totp").as_dict(),
-            # Microsoft Authenticator number matching (#203)
             AutoFillRule(selector="div[data-value=PhoneAppNotification]", action="click").as_dict(),
-            # Office365 "Stay signed in?" auto-dismiss (#196)
             AutoFillRule(selector="input[id=KmsiCheckboxField]", action="click").as_dict(),
             AutoFillRule(selector="input[id=idSIButton9]", action="click").as_dict(),
         ]
@@ -121,9 +119,42 @@ class BitwardenConfig(ConfigNode):
 
 
 @attr.s
+class OnePasswordConfig(ConfigNode):
+    """Configuration for the 1Password TOTP provider."""
+
+    item = attr.ib(default="")
+    vault = attr.ib(default="")
+    account = attr.ib(default="")
+
+
+@attr.s
+class PassConfig(ConfigNode):
+    """Configuration for the pass/password-store TOTP provider."""
+
+    entry = attr.ib(default="")
+
+
+@attr.s
+class KillSwitchSettings(ConfigNode):
+    """Persisted kill-switch settings (loaded via ``[kill_switch]`` section)."""
+
+    enabled = attr.ib(default=False, converter=bool)
+    allow_lan = attr.ib(default=False, converter=bool)
+    ipv6 = attr.ib(default=True, converter=bool)
+
+    @staticmethod
+    def _convert_dns_servers(val):
+        if val is None:
+            return []
+        return [str(v) for v in val]
+
+    dns_servers = attr.ib(factory=list, converter=_convert_dns_servers)
+
+
+@attr.s
 class Credentials(ConfigNode):
     username = attr.ib()
-    totp_source = attr.ib(default="local")  # "local" or "2fauth"
+    totp_source = attr.ib(default="local")  # local, 2fauth, bitwarden, 1password, pass
     _totp_secret = attr.ib(default=None, init=False, repr=False)
     _password = attr.ib(default=None, init=False, repr=False)
     _totp_provider = attr.ib(default=None, init=False, repr=False)
@@ -152,11 +183,9 @@ class Credentials(ConfigNode):
 
     @property
     def totp(self):
-        # If a pluggable provider is set, delegate to it
         if self._totp_provider is not None:
             return self._totp_provider.get_totp()
 
-        # Original local behaviour
         if self._totp_secret:
             try:
                 return pyotp.TOTP(self._totp_secret).now()
@@ -207,7 +236,7 @@ class Credentials(ConfigNode):
             logger.info("Cannot delete saved totp secret from keyring.")
 
     def set_totp_provider(self, provider):
-        """Attach a custom :class:`TotpProvider` (e.g. 2FAuth)."""
+        """Attach a custom :class:`TotpProvider` (e.g. 2FAuth, 1Password, pass)."""
         self._totp_provider = provider
 
     def save(self):
@@ -240,6 +269,30 @@ def _convert_bitwarden(val):
     return BitwardenConfig.from_dict(val)
 
 
+def _convert_onepassword(val):
+    if val is None:
+        return None
+    if isinstance(val, OnePasswordConfig):
+        return val
+    return OnePasswordConfig.from_dict(val)
+
+
+def _convert_pass(val):
+    if val is None:
+        return None
+    if isinstance(val, PassConfig):
+        return val
+    return PassConfig.from_dict(val)
+
+
+def _convert_killswitch(val):
+    if val is None:
+        return None
+    if isinstance(val, KillSwitchSettings):
+        return val
+    return KillSwitchSettings.from_dict(val)
+
+
 def _convert_str_list(val):
     if val is None:
         return []
@@ -257,6 +310,9 @@ class ProfileConfig(ConfigNode):
     name = attr.ib(converter=str, default="")
     credentials = attr.ib(default=None, converter=Credentials.from_dict)
     twofauth = attr.ib(default=None, converter=_convert_twofauth)
+    bitwarden = attr.ib(default=None, converter=_convert_bitwarden)
+    onepassword = attr.ib(default=None, converter=_convert_onepassword)
+    pass_ = attr.ib(default=None, converter=_convert_pass)
     routes = attr.ib(factory=list, converter=_convert_str_list)
     no_routes = attr.ib(factory=list, converter=_convert_str_list)
 
@@ -267,6 +323,10 @@ class ProfileConfig(ConfigNode):
         d = dict(d)
         if "2fauth" in d:
             d["twofauth"] = d.pop("2fauth")
+        if "1password" in d:
+            d["onepassword"] = d.pop("1password")
+        if "pass" in d:
+            d["pass_"] = d.pop("pass")
         return cls(**d)
 
     def as_dict(self):
@@ -275,6 +335,14 @@ class ProfileConfig(ConfigNode):
             val = d.pop("twofauth")
             if val is not None:
                 d["2fauth"] = val
+        if "onepassword" in d:
+            val = d.pop("onepassword")
+            if val is not None:
+                d["1password"] = val
+        if "pass_" in d:
+            val = d.pop("pass_")
+            if val is not None:
+                d["pass"] = val
         return d
 
     def to_host_profile(self):
@@ -304,28 +372,41 @@ class Config(ConfigNode):
     credentials = attr.ib(default=None, converter=Credentials.from_dict)
     twofauth = attr.ib(default=None, converter=_convert_twofauth)
     bitwarden = attr.ib(default=None, converter=_convert_bitwarden)
+    onepassword = attr.ib(default=None, converter=_convert_onepassword)
+    pass_ = attr.ib(default=None, converter=_convert_pass)
     profiles = attr.ib(factory=dict, converter=_convert_profiles)
     active_profile = attr.ib(default=None)
     notifications = attr.ib(default=False, converter=bool)
+    connection_history = attr.ib(default=True, converter=bool)
+    kill_switch = attr.ib(default=None, converter=_convert_killswitch)
 
     @classmethod
     def from_dict(cls, d):
         if d is None:
             return None
         d = dict(d)
-        # TOML section [2fauth] → Python field twofauth
         if "2fauth" in d:
             d["twofauth"] = d.pop("2fauth")
+        if "1password" in d:
+            d["onepassword"] = d.pop("1password")
+        if "pass" in d:
+            d["pass_"] = d.pop("pass")
         return cls(**d)
 
     def as_dict(self):
         d = attr.asdict(self, filter=lambda a, v: a.init)
-        # Python field twofauth → TOML section [2fauth]
         if "twofauth" in d:
             val = d.pop("twofauth")
             if val is not None:
                 d["2fauth"] = val
-        # Serialize profiles properly
+        if "onepassword" in d:
+            val = d.pop("onepassword")
+            if val is not None:
+                d["1password"] = val
+        if "pass_" in d:
+            val = d.pop("pass_")
+            if val is not None:
+                d["pass"] = val
         if "profiles" in d and d["profiles"]:
             serialized = {}
             for name, prof in d["profiles"].items():
@@ -377,3 +458,6 @@ class DisplayMode(enum.Enum):
 
 # Supported auto-fill action types (including FIDO2)
 AUTOFILL_ACTIONS = ("click", "stop", "fido2")
+
+# Supported TOTP source names (used for CLI validation and setup wizard)
+TOTP_SOURCES = ("local", "2fauth", "bitwarden", "1password", "pass")
