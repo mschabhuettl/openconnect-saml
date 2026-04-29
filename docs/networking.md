@@ -27,12 +27,23 @@ no_routes = ["192.168.0.0/16"]
 
 CIDR validity is checked by `openconnect-saml config validate`.
 
-## Kill-switch (Linux / iptables)
+## Kill-switch
 
 Blocks every outbound connection except to the VPN server, loopback,
-and `tun*` / `utun*` / `ppp*` tunnel interfaces. Connection replies
-are allowed via conntrack (`ESTABLISHED,RELATED`). DNS resolvers and
-RFC1918 LAN ranges can be allow-listed individually.
+and tunnel interfaces. Two backends share the same CLI surface
+(`killswitch enable / disable / status`):
+
+- **Linux (iptables)** — production-quality. Creates an
+  `OPENCONNECT_SAML_KILLSWITCH` chain jumped to from `OUTPUT`,
+  optional ip6tables mirror, conntrack-based reply allowance.
+- **macOS (pf)** — *experimental* in v0.9.0. Loads a self-contained
+  pf anchor (`openconnect-saml-killswitch`) via `pfctl -a`. Doesn't
+  touch `/etc/pf.conf`; rules disappear cleanly on disable. macOS
+  users should test thoroughly before relying on it for sensitive
+  traffic.
+
+DNS resolvers and RFC1918 LAN ranges can be allow-listed individually
+on both backends.
 
 ### One-shot — auto-clears on disconnect
 
@@ -74,11 +85,11 @@ dns_servers = ["1.1.1.1", "9.9.9.9"]
 
 ### Safety
 
-- iptables-only (Linux); other platforms surface
+- Linux + macOS only; other platforms surface
   `KillSwitchNotSupported` immediately.
-- Only chain `OPENCONNECT_SAML_KILLSWITCH` is installed; removal is
-  idempotent via `killswitch disable`.
-- If the CLI crashes and the chain is stuck:
+- **Linux**: only chain `OPENCONNECT_SAML_KILLSWITCH` is installed;
+  removal is idempotent via `killswitch disable`. If the CLI crashes
+  and the chain is stuck:
 
   ```bash
   sudo iptables -F  OPENCONNECT_SAML_KILLSWITCH
@@ -86,6 +97,11 @@ dns_servers = ["1.1.1.1", "9.9.9.9"]
   sudo ip6tables -F OPENCONNECT_SAML_KILLSWITCH
   sudo ip6tables -X OPENCONNECT_SAML_KILLSWITCH
   ```
+
+- **macOS**: only the `openconnect-saml-killswitch` pf anchor is
+  populated; flushing it (`sudo pfctl -a openconnect-saml-killswitch -F all`)
+  removes our rules without affecting the rest of pf. Anchor entry
+  goes away on reboot.
 
 - Session-based `--kill-switch` tears down on disconnect. The persistent
   form (configured in `[kill_switch]` or via `killswitch enable`) stays

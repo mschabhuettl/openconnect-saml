@@ -121,6 +121,42 @@ timestamp.
 - Enabled by default. Disable per-session with `--no-history`, globally
   with `connection_history = false` in config.
 
+## Interactive TUI
+
+Full-screen, keyboard-driven terminal UI:
+
+```bash
+openconnect-saml tui
+```
+
+Layout: profile list on the left, live status / history on the right.
+Keys:
+
+| Key | Action |
+|---|---|
+| `↑/k` / `↓/j` | Move profile selection |
+| `Enter` / `c` | Connect to selected profile |
+| `d` | Disconnect |
+| `r` | Refresh profile list |
+| `s` | Show live status pane |
+| `h` | Show history pane |
+| `q` / `Esc` | Quit (active VPN keeps running) |
+
+Requires the `[tui]` extra (`rich`). For monitoring-only use the
+non-interactive `status` command instead.
+
+## Tk GUI
+
+```bash
+openconnect-saml gui
+```
+
+Three tabs: *Profiles* (list, add / edit / delete dialogs, connect /
+disconnect, log pane), *Status* (live counters / rate, refreshed every
+2s), *History* (recent events, refreshed every 5s). The toolbar has a
+global Browser-backend dropdown (`chrome` / `qt` / `headless`). Tk-only
+— no extra dependencies.
+
 ## On-connect / on-disconnect hooks
 
 Run a command when the VPN connects or disconnects:

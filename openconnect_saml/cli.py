@@ -343,6 +343,16 @@ def create_argparser():
         "--force", action="store_true", default=False, help="Overwrite existing profiles"
     )
 
+    migrate_parser = profiles_sub.add_parser(
+        "migrate", help="Apply schema fix-ups to the active config (idempotent, dry-run by default)"
+    )
+    migrate_parser.add_argument(
+        "--apply",
+        action="store_true",
+        default=False,
+        help="Persist changes (default: dry-run)",
+    )
+
     # status
     status_parser = subparsers.add_parser("status", help="Show VPN connection status")
     status_parser.add_argument("--watch", "-w", action="store_true", default=False)
@@ -366,7 +376,10 @@ def create_argparser():
     subparsers.add_parser("service", help="Manage systemd VPN service", add_help=False)
 
     # gui
-    subparsers.add_parser("gui", help="Open a minimal GUI for saved profiles")
+    subparsers.add_parser("gui", help="Open a Tk GUI for saved profiles")
+
+    # tui
+    subparsers.add_parser("tui", help="Interactive terminal UI (rich-based)")
 
     # config
     config_parser = subparsers.add_parser("config", help="Inspect config file")
@@ -381,6 +394,12 @@ def create_argparser():
     doctor_parser = subparsers.add_parser("doctor", help="Run diagnostic checks")
     doctor_parser.add_argument(
         "-s", "--server", default=None, help="Optional: test DNS + TCP to this server"
+    )
+    doctor_parser.add_argument(
+        "--json",
+        action="store_true",
+        default=False,
+        help="Emit results as JSON (machine-readable)",
     )
 
     # history
@@ -586,6 +605,12 @@ def _handle_gui_command():
     return gui_main()
 
 
+def _handle_tui_command():
+    from openconnect_saml.interactive_tui import handle_tui_command
+
+    return handle_tui_command()
+
+
 def _handle_connect(args, parser):
     """Handle the 'connect' subcommand or legacy invocation."""
     _recover_connect_options_from_remainder(args)
@@ -654,6 +679,7 @@ def _is_legacy_invocation(argv):
         "history",
         "killswitch",
         "gui",
+        "tui",
     }
     first = argv[0]
     return first.startswith("-") or first not in known_subcommands
@@ -708,6 +734,8 @@ def main():
             return _handle_killswitch_command(args)
         if args.command == "gui":
             return _handle_gui_command()
+        if args.command == "tui":
+            return _handle_tui_command()
 
         parser.print_help()
         return 0

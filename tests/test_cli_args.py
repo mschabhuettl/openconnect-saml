@@ -66,6 +66,29 @@ class TestHistoryStats:
         assert args.json is True
 
 
+class TestDoctorJson:
+    def test_doctor_json_flag(self, main_parser):
+        args = main_parser.parse_args(["doctor", "--json"])
+        assert args.json is True
+
+
+class TestProfilesMigrate:
+    def test_migrate_subcommand(self, main_parser):
+        args = main_parser.parse_args(["profiles", "migrate"])
+        assert args.profiles_action == "migrate"
+        assert args.apply is False
+
+    def test_migrate_apply(self, main_parser):
+        args = main_parser.parse_args(["profiles", "migrate", "--apply"])
+        assert args.apply is True
+
+
+class TestTuiSubcommand:
+    def test_tui_subcommand_recognized(self, main_parser):
+        args = main_parser.parse_args(["tui"])
+        assert args.command == "tui"
+
+
 class TestExportFormatFlag:
     def test_export_format_default_json(self, main_parser):
         args = main_parser.parse_args(["profiles", "export", "work"])

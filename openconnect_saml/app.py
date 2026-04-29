@@ -370,41 +370,37 @@ def configure_logger(logger, level):
     logger.setLevel(level)
 
 
-async def _run(args, cfg):
-    # Handle --reset-credentials
-    if getattr(args, "reset_credentials", False):
-        if args.user:
-            logger.info("Resetting stored credentials", user=args.user)
-            cred = Credentials(args.user)
-            del cred.password
-            del cred.totp
-        else:
-            logger.error("--reset-credentials requires --user")
-        raise ValueError("Credentials reset complete", 0)
+def resolve_totp_source(args, credentials) -> str:
+    """Return the effective TOTP source name from CLI flags + saved credentials.
 
-    credentials = None
-    if cfg.credentials:
-        credentials = cfg.credentials
-    elif args.user:
-        credentials = Credentials(args.user)
-
-    if credentials and not credentials.password:
-        credentials.password = getpass.getpass(prompt=f"Password ({args.user}): ")
-        cfg.credentials = credentials
-
-    # Determine TOTP source: CLI > config > default ("local")
+    Precedence: ``--no-totp`` > ``--totp-source`` > saved-credentials default
+    > ``"local"``. Pure function — no side effects, no logging.
+    """
     if getattr(args, "no_totp", False):
-        totp_source = "none"
-    else:
-        totp_source = getattr(args, "totp_source", None) or (
-            credentials.totp_source if credentials else "local"
-        )
+        return "none"
+    return getattr(args, "totp_source", None) or (
+        credentials.totp_source if credentials else "local"
+    )
 
-    if credentials and totp_source == "none":
+
+def configure_totp_provider(args, cfg, credentials) -> None:
+    """Wire up the chosen TOTP provider (mutates ``credentials`` and ``cfg``).
+
+    Raises ``ValueError(msg, exit_code)`` if a provider is selected but the
+    required configuration (CLI flag or config section) is missing. ``"none"``
+    and ``"local"`` are no-ops here; the caller may still prompt for a local
+    secret when needed.
+    """
+    if not credentials:
+        return
+    source = resolve_totp_source(args, credentials)
+
+    if source == "none":
         credentials.totp_source = "none"
         logger.debug("TOTP prompt disabled (totp_source=none)")
+        return
 
-    elif credentials and totp_source == "bitwarden":
+    if source == "bitwarden":
         bw_item_id = getattr(args, "bw_item_id", None)
         if cfg.bitwarden:
             bw_item_id = bw_item_id or cfg.bitwarden.item_id
@@ -417,8 +413,9 @@ async def _run(args, cfg):
         credentials.set_totp_provider(BitwardenProvider(item_id=bw_item_id))
         cfg.bitwarden = BitwardenConfig(item_id=bw_item_id)
         logger.info("Using Bitwarden TOTP provider")
+        return
 
-    elif credentials and totp_source == "1password":
+    if source == "1password":
         op_item = getattr(args, "op_item", None)
         op_vault = getattr(args, "op_vault", None)
         op_account = getattr(args, "op_account", None)
@@ -439,8 +436,9 @@ async def _run(args, cfg):
             item=op_item, vault=op_vault or "", account=op_account or ""
         )
         logger.info("Using 1Password TOTP provider")
+        return
 
-    elif credentials and totp_source == "pass":
+    if source == "pass":
         pass_entry = getattr(args, "pass_entry", None)
         if cfg.pass_:
             pass_entry = pass_entry or cfg.pass_.entry
@@ -451,8 +449,9 @@ async def _run(args, cfg):
         credentials.set_totp_provider(PassProvider(entry=pass_entry))
         cfg.pass_ = PassConfig(entry=pass_entry)
         logger.info("Using pass TOTP provider")
+        return
 
-    elif credentials and totp_source == "2fauth":
+    if source == "2fauth":
         twofauth_url = getattr(args, "twofauth_url", None)
         twofauth_token = getattr(args, "twofauth_token", None)
         twofauth_account_id = getattr(args, "twofauth_account_id", None)
@@ -481,7 +480,39 @@ async def _run(args, cfg):
         )
         logger.info("Using 2FAuth TOTP provider")
 
-    elif credentials and not credentials.totp:
+
+async def _run(args, cfg):
+    # Handle --reset-credentials
+    if getattr(args, "reset_credentials", False):
+        if args.user:
+            logger.info("Resetting stored credentials", user=args.user)
+            cred = Credentials(args.user)
+            del cred.password
+            del cred.totp
+        else:
+            logger.error("--reset-credentials requires --user")
+        raise ValueError("Credentials reset complete", 0)
+
+    credentials = None
+    if cfg.credentials:
+        credentials = cfg.credentials
+    elif args.user:
+        credentials = Credentials(args.user)
+
+    if credentials and not credentials.password:
+        credentials.password = getpass.getpass(prompt=f"Password ({args.user}): ")
+        cfg.credentials = credentials
+
+    configure_totp_provider(args, cfg, credentials)
+    totp_source = resolve_totp_source(args, credentials)
+
+    # Catch-all: if no provider was configured and no TOTP secret is on file,
+    # ask for one (unless the user explicitly opted out via "none").
+    if (
+        credentials
+        and totp_source not in ("none", "bitwarden", "1password", "pass", "2fauth")
+        and not credentials.totp
+    ):
         credentials.totp = getpass.getpass(
             prompt=f"TOTP secret (leave blank if not required) ({args.user}): "
         )

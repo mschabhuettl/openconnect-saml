@@ -5,7 +5,14 @@
 ```bash
 openconnect-saml doctor                          # local checks only
 openconnect-saml doctor --server vpn.example.com # also probe DNS / TCP / HTTPS
+openconnect-saml doctor --json                   # machine-readable
+openconnect-saml doctor --server vpn --json      # combine
 ```
+
+The JSON variant emits one object with `server`, `summary`
+(per-status counts), and a `checks` list of ``{name, status, message,
+hint, details}`` records, suitable for monitoring scripts and CI
+gates.
 
 Exit codes:
 

@@ -138,6 +138,19 @@ def _format_bytes(b):
         return f"{b / (1024 * 1024 * 1024):.2f} GB"
 
 
+def _format_rate(bps):
+    """Format bytes/sec as a human-readable rate string."""
+    if bps is None:
+        return "—"
+    if bps < 1024:
+        return f"{bps:.0f} B/s"
+    if bps < 1024 * 1024:
+        return f"{bps / 1024:.1f} KB/s"
+    if bps < 1024 * 1024 * 1024:
+        return f"{bps / (1024 * 1024):.1f} MB/s"
+    return f"{bps / (1024 * 1024 * 1024):.2f} GB/s"
+
+
 def _extract_server_from_cmdline(cmdline):
     """Extract server URL from openconnect command line."""
     parts = cmdline.split()
@@ -214,6 +227,10 @@ def _print_status_plain(status):
     tx_str = _format_bytes(status["tx"])
     rx_str = _format_bytes(status["rx"])
     print(f"  TX / RX:      {tx_str} / {rx_str}")
+    if status.get("tx_rate") is not None or status.get("rx_rate") is not None:
+        tx_rate = _format_rate(status.get("tx_rate"))
+        rx_rate = _format_rate(status.get("rx_rate"))
+        print(f"  Rate (↑/↓):   {tx_rate} / {rx_rate}")
     print(f"  Reconnects:   {status['reconnects']}")
 
 
@@ -248,6 +265,9 @@ def _print_status_rich(status):
     table.add_row("Connected", status["uptime"] or "N/A")
     table.add_row("IP Address", status["ip"])
     table.add_row("TX / RX", f"{tx_str} / {rx_str}")
+    if status.get("tx_rate") is not None or status.get("rx_rate") is not None:
+        rate_str = f"{_format_rate(status.get('tx_rate'))} / {_format_rate(status.get('rx_rate'))}"
+        table.add_row("Rate (↑/↓)", rate_str)
     table.add_row("Reconnects", str(status["reconnects"]))
 
     console.print(table)
@@ -259,6 +279,23 @@ def _print_status_json(status):
     json.dump(payload, sys.stdout)
     sys.stdout.write("\n")
     sys.stdout.flush()
+
+
+def _augment_with_rate(status, prev):
+    """Annotate ``status`` with tx_rate / rx_rate (bytes/sec) using ``prev`` as baseline."""
+    if not status or not prev:
+        return status
+    if not status.get("interface") or status["interface"] != prev.get("interface"):
+        return status
+    dt = (status.get("_sampled_at") or 0) - (prev.get("_sampled_at") or 0)
+    if dt <= 0:
+        return status
+    for key in ("tx", "rx"):
+        cur = status.get(key)
+        old = prev.get(key)
+        if cur is not None and old is not None and cur >= old:
+            status[f"{key}_rate"] = (cur - old) / dt
+    return status
 
 
 def handle_status_command(args):
@@ -275,17 +312,27 @@ def handle_status_command(args):
         except Exception:
             _print_status_plain(status)
 
+    def _sample():
+        s = _collect_status()
+        if s is not None:
+            s["_sampled_at"] = time.monotonic()
+        return s
+
     if watch:
+        prev = None
         try:
             while True:
                 if not as_json:
                     # Clear screen using ANSI escape (avoids shell injection via os.system)
                     print("\033[2J\033[H", end="", flush=True)
-                _render(_collect_status())
+                status = _sample()
+                _augment_with_rate(status, prev)
+                _render(status)
+                prev = status
                 time.sleep(2)
         except KeyboardInterrupt:
             return 0
     else:
-        status = _collect_status()
+        status = _sample()
         _render(status)
         return 0 if status else 1

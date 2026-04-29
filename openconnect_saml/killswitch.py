@@ -1,27 +1,24 @@
-"""Kill-switch implementation — blocks all non-VPN traffic (Linux/iptables).
+"""Kill-switch — blocks all non-VPN traffic.
 
-Creates a dedicated iptables (and optionally ip6tables) chain called
-``OPENCONNECT_SAML_KILLSWITCH`` which is jumped to from OUTPUT. The chain:
+Two platform-specific backends share a common ``KillSwitch`` API:
 
-- Allows loopback traffic
-- Allows DNS to resolver(s) if specified (otherwise assumes VPN provides DNS)
-- Allows output via any ``tun*``/``utun*``/``ppp*`` interface
-- Allows output to the VPN server IP on the configured port (so the VPN
-  itself can connect and reconnect)
-- REJECTs everything else with ``--reject-with icmp-net-unreachable``
+- **Linux (iptables)** — production-quality. Creates a dedicated
+  ``OPENCONNECT_SAML_KILLSWITCH`` chain jumped to from ``OUTPUT``,
+  with optional ip6tables mirror.
+- **macOS (pf)** — *experimental*. Loads a self-contained pf anchor
+  (``openconnect-saml-killswitch``) via ``pfctl -a``. Doesn't touch
+  ``/etc/pf.conf``; rules disappear cleanly on disable.
+
+Other platforms still raise ``KillSwitchNotSupported``.
 
 Design goals:
 
-- **Idempotent**: calling enable() twice is safe; calling disable() when no
-  chain exists is a no-op.
-- **Explicit**: nothing happens unless the user asks. No magic root-mode.
-- **Recoverable**: ``openconnect-saml killswitch disable`` always works,
-  even if the VPN process crashed.
-- **Least privilege**: uses ``sudo`` only when needed, documents required
-  permissions clearly, supports ``DOAS`` and ``SUDO`` overrides.
-
-Only Linux is supported. On other platforms the module surfaces a helpful
-``KillSwitchNotSupported`` error.
+- **Idempotent**: enable() twice is safe; disable() when nothing is
+  installed is a no-op.
+- **Explicit**: nothing happens unless the user asks.
+- **Recoverable**: ``openconnect-saml killswitch disable`` always
+  works, even if the VPN process crashed.
+- **Least privilege**: uses ``sudo``/``doas`` only when needed.
 """
 
 from __future__ import annotations
@@ -39,8 +36,12 @@ import structlog
 logger = structlog.get_logger()
 
 CHAIN_NAME = "OPENCONNECT_SAML_KILLSWITCH"
+PF_ANCHOR_NAME = "openconnect-saml-killswitch"
 DEFAULT_VPN_PORT = 443
 DEFAULT_VPN_INTERFACES = ("tun+", "utun+", "ppp+")
+# pf interface globs — pf doesn't allow the iptables-style ``+`` wildcard,
+# so we enumerate plausible tunnel device names explicitly.
+DEFAULT_PF_TUNNEL_INTERFACES = ("utun0", "utun1", "utun2", "utun3", "utun4", "utun5")
 
 
 class KillSwitchError(Exception):
@@ -86,10 +87,16 @@ class KillSwitchConfig:
 
 
 def _platform_check() -> None:
-    if platform.system() != "Linux":
+    if platform.system() not in ("Linux", "Darwin"):
         raise KillSwitchNotSupported(
-            f"Kill-switch is only supported on Linux (detected: {platform.system()})"
+            f"Kill-switch is only supported on Linux (iptables) and macOS (pf); "
+            f"detected: {platform.system()}"
         )
+
+
+def _backend_name() -> str:
+    """Return the kill-switch backend identifier for the current platform."""
+    return "pf" if platform.system() == "Darwin" else "iptables"
 
 
 def _find_privilege_tool(explicit: str | None) -> str | None:
@@ -148,11 +155,49 @@ class KillSwitch:
     def enable(self) -> None:
         """Install kill-switch rules. Idempotent."""
         _platform_check()
+        if _backend_name() == "pf":
+            return self._pf_enable()
+        return self._iptables_enable()
+
+    def disable(self, silent: bool = False) -> None:
+        """Remove kill-switch rules. Idempotent."""
+        _platform_check()
+        if _backend_name() == "pf":
+            return self._pf_disable(silent=silent)
+        return self._iptables_disable(silent=silent)
+
+    def is_active(self) -> bool:
+        """Check whether the kill-switch is currently installed."""
+        _platform_check()
+        if _backend_name() == "pf":
+            return self._pf_is_active()
+        return self._chain_exists("iptables")
+
+    def status(self) -> dict:
+        """Return a dict describing the current kill-switch state."""
+        _platform_check()
+        if _backend_name() == "pf":
+            return self._pf_status()
+        state = {
+            "backend": "iptables",
+            "active": self.is_active(),
+            "ipv4_chain": self._chain_exists("iptables"),
+            "ipv6_chain": self._chain_exists("ip6tables") if self.config.ipv6 else False,
+        }
+        if state["active"]:
+            state["rules"] = self._list_chain_rules("iptables")
+        return state
+
+    # ------------------------------------------------------------------
+    # iptables backend (Linux)
+    # ------------------------------------------------------------------
+
+    def _iptables_enable(self) -> None:
         self._ensure_iptables_available()
 
-        if self.is_active():
+        if self._chain_exists("iptables"):
             logger.info("Kill-switch already active — refreshing rules")
-            self.disable(silent=True)
+            self._iptables_disable(silent=True)
 
         server_ips: list[str] = []
         if self.config.server_host:
@@ -173,9 +218,7 @@ class KillSwitch:
 
         logger.info("Kill-switch enabled", chain=CHAIN_NAME)
 
-    def disable(self, silent: bool = False) -> None:
-        """Remove kill-switch rules. Idempotent."""
-        _platform_check()
+    def _iptables_disable(self, silent: bool = False) -> None:
         self._ensure_iptables_available()
 
         removed = False
@@ -190,23 +233,6 @@ class KillSwitch:
             logger.info("Kill-switch disabled")
         elif not removed and not silent:
             logger.info("Kill-switch was not active")
-
-    def is_active(self) -> bool:
-        """Check whether the kill-switch is currently installed."""
-        _platform_check()
-        return self._chain_exists("iptables")
-
-    def status(self) -> dict:
-        """Return a dict describing the current kill-switch state."""
-        _platform_check()
-        state = {
-            "active": self.is_active(),
-            "ipv4_chain": self._chain_exists("iptables"),
-            "ipv6_chain": self._chain_exists("ip6tables") if self.config.ipv6 else False,
-        }
-        if state["active"]:
-            state["rules"] = self._list_chain_rules("iptables")
-        return state
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -371,6 +397,129 @@ class KillSwitch:
         self._run([tool, "-F", CHAIN_NAME], check=False)
         self._run([tool, "-X", CHAIN_NAME], check=False)
 
+    # ------------------------------------------------------------------
+    # pf backend (macOS) — experimental
+    # ------------------------------------------------------------------
+
+    def _ensure_pfctl_available(self) -> None:
+        if not shutil.which("pfctl"):
+            raise KillSwitchError(
+                "pfctl command not found. macOS ships pf by default — check your "
+                "PATH or run /sbin/pfctl directly."
+            )
+
+    def _pf_render_rules(self, server_ips: list[str]) -> str:
+        """Render the pf anchor ruleset as text suitable for ``pfctl -f -``."""
+        lines: list[str] = [
+            "# openconnect-saml kill-switch (auto-generated)",
+            "set skip on lo0",
+            "pass out quick on lo0 all",
+        ]
+        # Always allow established (pf does this automatically with `keep state`)
+        for iface in DEFAULT_PF_TUNNEL_INTERFACES:
+            lines.append(f"pass out quick on {iface} all keep state")
+        # DNS allow-list
+        for dns in self.config.dns_servers or []:
+            if _is_ipv6(dns):
+                continue  # pf rules below default to v4; v6 needs separate
+            lines.append(f"pass out quick proto {{ udp tcp }} to {dns} port 53 keep state")
+        # VPN server allow-list
+        for ip in server_ips:
+            if _is_ipv6(ip):
+                continue  # macOS-only IPv6 still served by separate stanza
+            lines.append(
+                f"pass out quick proto {{ tcp udp }} to {ip} "
+                f"port {self.config.server_port} keep state"
+            )
+        # LAN allow-list
+        if self.config.allow_lan:
+            for lan in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"):
+                lines.append(f"pass out quick to {lan} keep state")
+        # Default-deny
+        lines.append("block return-icmp out all")
+        return "\n".join(lines) + "\n"
+
+    def _pf_enable(self) -> None:
+        self._ensure_pfctl_available()
+
+        server_ips: list[str] = []
+        if self.config.server_host:
+            try:
+                server_ips = _resolve_server_ips(self.config.server_host)
+                logger.info(
+                    "Resolved VPN server for kill-switch",
+                    host=self.config.server_host,
+                    ips=server_ips,
+                )
+            except KillSwitchError as exc:
+                logger.error("Cannot resolve VPN server for kill-switch", error=str(exc))
+                raise
+
+        rules = self._pf_render_rules(server_ips=server_ips)
+
+        # Make sure pf itself is enabled — pf is off by default on macOS.
+        self._run(["pfctl", "-e"], check=False)
+
+        # Load our anchor with the rules. ``pfctl -a anchor -f -`` reads from stdin.
+        full_cmd = ([self._sudo] if self._sudo else []) + [
+            "pfctl",
+            "-a",
+            PF_ANCHOR_NAME,
+            "-f",
+            "-",
+        ]
+        result = subprocess.run(  # nosec
+            full_cmd,
+            input=rules,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            raise KillSwitchError(
+                f"pfctl failed to load anchor '{PF_ANCHOR_NAME}' "
+                f"(exit {result.returncode}): {result.stderr.strip()}"
+            )
+
+        logger.info("Kill-switch enabled", anchor=PF_ANCHOR_NAME, backend="pf")
+
+    def _pf_disable(self, silent: bool = False) -> None:
+        self._ensure_pfctl_available()
+
+        if not self._pf_is_active():
+            if not silent:
+                logger.info("Kill-switch was not active")
+            return
+
+        # Flush all rules from our anchor — leaves the empty anchor entry behind,
+        # which is harmless. The anchor naturally goes away on reboot.
+        self._run(["pfctl", "-a", PF_ANCHOR_NAME, "-F", "all"], check=False)
+
+        if not silent:
+            logger.info("Kill-switch disabled", anchor=PF_ANCHOR_NAME)
+
+    def _pf_is_active(self) -> bool:
+        # Check whether our anchor has any rules loaded.
+        result = self._run(
+            ["pfctl", "-a", PF_ANCHOR_NAME, "-sr"],
+            check=False,
+        )
+        if result.returncode != 0:
+            return False
+        return bool(result.stdout.strip())
+
+    def _pf_status(self) -> dict:
+        result = self._run(["pfctl", "-a", PF_ANCHOR_NAME, "-sr"], check=False)
+        rules: list[str] = []
+        if result.returncode == 0:
+            rules = [line for line in result.stdout.splitlines() if line.strip()]
+        return {
+            "backend": "pf",
+            "active": bool(rules),
+            "anchor": PF_ANCHOR_NAME,
+            "rules": rules,
+        }
+
 
 # ---------------------------------------------------------------------------
 # CLI handlers
@@ -416,16 +565,20 @@ def handle_killswitch_command(args) -> int:
             return 0
         elif action == "status":
             state = ks.status()
+            backend = state.get("backend", "iptables")
             if state["active"]:
-                print("Kill-switch: ACTIVE")
-                print(f"  IPv4 chain: {'yes' if state['ipv4_chain'] else 'no'}")
-                print(f"  IPv6 chain: {'yes' if state['ipv6_chain'] else 'no'}")
-                if "rules" in state:
+                print(f"Kill-switch: ACTIVE  ({backend})")
+                if backend == "iptables":
+                    print(f"  IPv4 chain: {'yes' if state.get('ipv4_chain') else 'no'}")
+                    print(f"  IPv6 chain: {'yes' if state.get('ipv6_chain') else 'no'}")
+                else:
+                    print(f"  pf anchor: {state.get('anchor', PF_ANCHOR_NAME)}")
+                if state.get("rules"):
                     print("  Rules:")
                     for rule in state["rules"]:
                         print(f"    {rule}")
             else:
-                print("Kill-switch: inactive")
+                print(f"Kill-switch: inactive  ({backend})")
             return 0
         else:
             print(f"Unknown killswitch action: {action}")

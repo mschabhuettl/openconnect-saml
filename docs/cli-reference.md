@@ -12,7 +12,8 @@ docs ([browsers](browsers.md), [authentication](authentication.md),
 | `connect [PROFILE]` | Authenticate + launch openconnect (or use a saved profile) |
 | `profiles` | List / add / remove / rename / show / export / import named profiles |
 | `setup` | Interactive configuration wizard |
-| `gui` | Minimal Tk launcher around saved profiles |
+| `gui` | Tk launcher with Profiles / Status / History tabs |
+| `tui` | Full-screen interactive terminal UI (rich) |
 | `status [--watch] [--json]` | Show live VPN connection state |
 | `history` | Inspect / clear / aggregate the connection audit log |
 | `service` | Install / start / stop / status / logs for a systemd unit |
@@ -141,6 +142,7 @@ openconnect-saml profiles rename OLD NEW
 openconnect-saml profiles show NAME [--json]
 openconnect-saml profiles export [NAME] [--file FILE] [--format json|nmconnection]
 openconnect-saml profiles import FILE|- [--as NAME] [--force]
+openconnect-saml profiles migrate [--apply]
 ```
 
 ## `history` subcommand
@@ -175,7 +177,7 @@ openconnect-saml config edit
 ## `doctor` subcommand
 
 ```bash
-openconnect-saml doctor [-s HOST]
+openconnect-saml doctor [-s HOST] [--json]
 ```
 
 ## `killswitch` subcommand (Linux)

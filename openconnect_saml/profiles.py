@@ -40,6 +40,8 @@ def handle_profiles_command(args):
         return _rename_profile(args)
     if action == "show":
         return _show_profile(args)
+    if action == "migrate":
+        return _migrate_profiles(args)
     # Default: list profiles
     return _list_profiles()
 
@@ -248,6 +250,123 @@ def _profile_to_exportable(name: str, prof) -> dict:
         twofa.pop("token", None)
         data["2fauth"] = twofa
     return data
+
+
+# ---------------------------------------------------------------------------
+# migrate
+# ---------------------------------------------------------------------------
+
+
+# Each entry: (description, predicate(cfg) -> bool, fix(cfg) -> None).
+# Predicates and fixes operate on a loaded ``Config`` instance — the caller
+# saves only when at least one fix has run.
+_MIGRATIONS: list[tuple[str, callable, callable]] = []
+
+
+def _register_migration(description: str):
+    def _decorate(fn_pair):
+        predicate, fix = fn_pair
+        _MIGRATIONS.append((description, predicate, fix))
+        return fn_pair
+
+    return _decorate
+
+
+def _legacy_default_profile_into_profiles_pair():
+    """If only ``[default_profile]`` exists, mirror it into ``[profiles.default]``."""
+
+    def predicate(cfg):
+        return cfg.default_profile is not None and not cfg.profiles
+
+    def fix(cfg):
+        prof = config.ProfileConfig(
+            server=cfg.default_profile.address,
+            user_group=cfg.default_profile.user_group or "",
+            name=cfg.default_profile.name or "default",
+        )
+        if cfg.credentials:
+            prof.credentials = cfg.credentials
+        cfg.profiles["default"] = prof
+        if not cfg.active_profile:
+            cfg.active_profile = "default"
+
+    return predicate, fix
+
+
+def _drop_unused_provider_sections_pair():
+    """Drop ``[2fauth]`` / ``[bitwarden]`` / ``[1password]`` / ``[pass]`` sections
+    that no profile references anymore."""
+    sections = (
+        ("twofauth", "totp_source", "2fauth"),
+        ("bitwarden", "totp_source", "bitwarden"),
+        ("onepassword", "totp_source", "1password"),
+        ("pass_", "totp_source", "pass"),
+    )
+
+    def _referenced(cfg, source_name):
+        if cfg.credentials and getattr(cfg.credentials, "totp_source", None) == source_name:
+            return True
+        for prof in cfg.profiles.values():
+            if prof.credentials and getattr(prof.credentials, "totp_source", None) == source_name:
+                return True
+        return False
+
+    def predicate(cfg):
+        return any(
+            getattr(cfg, attr) is not None and not _referenced(cfg, source_name)
+            for attr, _, source_name in sections
+        )
+
+    def fix(cfg):
+        for attr, _, source_name in sections:
+            if getattr(cfg, attr) is not None and not _referenced(cfg, source_name):
+                setattr(cfg, attr, None)
+
+    return predicate, fix
+
+
+_register_migration("Move legacy [default_profile] to [profiles.default] (multi-profile schema)")(
+    _legacy_default_profile_into_profiles_pair()
+)
+_register_migration("Drop unused [2fauth] / [bitwarden] / [1password] / [pass] sections")(
+    _drop_unused_provider_sections_pair()
+)
+
+
+def _migrate_profiles(args):
+    """Apply schema fixups to the active config file.
+
+    Each migration is a (predicate, fix) pair. The predicate returns True when
+    the migration is applicable; the fix mutates the config in-place. We run
+    in dry-run mode by default and only persist if ``--apply`` is passed.
+    """
+    apply = getattr(args, "apply", False)
+    cfg = config.load()
+
+    pending: list[str] = []
+    for description, predicate, _fix in _MIGRATIONS:
+        if predicate(cfg):
+            pending.append(description)
+
+    if not pending:
+        print("No migrations needed; configuration is already up to date.")
+        return 0
+
+    print(f"{len(pending)} migration(s) applicable:")
+    for desc in pending:
+        print(f"  • {desc}")
+    print()
+
+    if not apply:
+        print("Dry-run only. Re-run with --apply to persist changes.")
+        return 0
+
+    for _description, predicate, fix in _MIGRATIONS:
+        if predicate(cfg):
+            fix(cfg)
+    config.save(cfg)
+    print(f"✓ Applied {len(pending)} migration(s) to {config.config_path()}")
+    return 0
 
 
 def _profile_to_nmconnection(name: str, prof) -> str:

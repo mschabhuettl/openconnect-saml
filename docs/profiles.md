@@ -106,6 +106,27 @@ name (re-exporting overwrites the same NM connection rather than
 duplicating). Secrets are not written; SAML/SSO authentication still
 happens at connect time via the openconnect plugin.
 
+## Schema migrations
+
+When the project's config schema gains optional fields or deprecates
+old ones, ``profiles migrate`` applies the transformations
+idempotently:
+
+```bash
+openconnect-saml profiles migrate           # dry-run, lists what would change
+openconnect-saml profiles migrate --apply   # persist
+```
+
+Current migrations:
+
+- Lift legacy `[default_profile]` into `[profiles.default]` so every
+  install is multi-profile-aware.
+- Drop `[2fauth]` / `[bitwarden]` / `[1password]` / `[pass]` sections
+  that no profile references anymore.
+
+`migrate` is safe to run on every config; if nothing applies it just
+reports "No migrations needed".
+
 ## Active profile
 
 `active_profile` in the config file marks the most recently connected

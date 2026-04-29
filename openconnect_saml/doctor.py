@@ -8,13 +8,14 @@ Each check is a :class:`Check` with ``ok``/``warn``/``fail`` outcomes.
 from __future__ import annotations
 
 import importlib
+import json
 import os
 import platform
 import shutil
 import socket
 import subprocess  # nosec
 import sys
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -499,25 +500,39 @@ def _print_results(results: list[CheckResult]) -> None:
                 print(f"        → {line}")
 
 
+def _summarize(results: list[CheckResult]) -> dict:
+    counts = {s: 0 for s in (STATUS_OK, STATUS_WARN, STATUS_FAIL, STATUS_SKIP)}
+    for r in results:
+        counts[r.status] = counts.get(r.status, 0) + 1
+    return counts
+
+
 def handle_doctor_command(args) -> int:
     server = getattr(args, "server", None)
-    print("openconnect-saml diagnostics")
-    print("=" * 40)
+    as_json = getattr(args, "json", False)
+
     results = run_all(server=server)
-    _print_results(results)
+    counts = _summarize(results)
 
-    ok_count = sum(1 for r in results if r.status == STATUS_OK)
-    warn_count = sum(1 for r in results if r.status == STATUS_WARN)
-    fail_count = sum(1 for r in results if r.status == STATUS_FAIL)
-    skip_count = sum(1 for r in results if r.status == STATUS_SKIP)
+    if as_json:
+        payload = {
+            "server": server,
+            "summary": counts,
+            "checks": [asdict(r) for r in results],
+        }
+        print(json.dumps(payload, indent=2))
+    else:
+        print("openconnect-saml diagnostics")
+        print("=" * 40)
+        _print_results(results)
+        print()
+        print(
+            f"Summary: {counts[STATUS_OK]} OK · {counts[STATUS_WARN]} warning"
+            f" · {counts[STATUS_FAIL]} failed · {counts[STATUS_SKIP]} skipped"
+        )
 
-    print()
-    print(
-        f"Summary: {ok_count} OK · {warn_count} warning · {fail_count} failed · {skip_count} skipped"
-    )
-
-    if fail_count > 0:
+    if counts[STATUS_FAIL] > 0:
         return 1
-    if warn_count > 0:
+    if counts[STATUS_WARN] > 0:
         return 2
     return 0

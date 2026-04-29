@@ -59,11 +59,24 @@ class TestHelpers:
 
 
 class TestPlatformCheck:
-    def test_not_supported_on_non_linux(self):
-        with patch("openconnect_saml.killswitch.platform.system", return_value="Darwin"):
+    def test_not_supported_on_windows(self):
+        with patch("openconnect_saml.killswitch.platform.system", return_value="Windows"):
             ks = KillSwitch(KillSwitchConfig())
             with pytest.raises(KillSwitchNotSupported):
                 ks.is_active()
+
+    def test_supported_on_darwin_via_pf(self):
+        """macOS uses the pf backend; is_active should not raise."""
+        with (
+            patch("openconnect_saml.killswitch.platform.system", return_value="Darwin"),
+            patch(
+                "openconnect_saml.killswitch.subprocess.run",
+                return_value=_mk(0, "", ""),
+            ),
+        ):
+            ks = KillSwitch(KillSwitchConfig(sudo=""))
+            # No rules → not active, but also not raising
+            assert ks.is_active() is False
 
 
 @pytest.mark.skipif(platform.system() != "Linux", reason="Linux only")
@@ -150,11 +163,56 @@ class TestKillSwitchCLI:
             killswitch_action = "status"
             server = None
 
-        with patch("openconnect_saml.killswitch.platform.system", return_value="Darwin"):
+        with patch("openconnect_saml.killswitch.platform.system", return_value="Windows"):
             rc = handle_killswitch_command(Args())
             assert rc == 2
             captured = capsys.readouterr()
-            assert (
-                "only supported on Linux" in captured.out.lower()
-                or "supported on linux" in captured.out.lower()
-            )
+            assert "only supported on linux" in captured.out.lower()
+
+
+class TestPfBackend:
+    """Tests for the macOS pf-based kill-switch backend."""
+
+    def test_render_rules_minimal(self):
+        with patch("openconnect_saml.killswitch.platform.system", return_value="Darwin"):
+            ks = KillSwitch(KillSwitchConfig(sudo=""))
+            rules = ks._pf_render_rules(server_ips=[])
+        # Always-present anchors
+        assert "set skip on lo0" in rules
+        assert "block return-icmp out all" in rules
+        assert "pass out quick on utun0" in rules
+
+    def test_render_rules_with_server_and_dns(self):
+        cfg = KillSwitchConfig(
+            server_host="vpn.example.com",
+            dns_servers=["1.1.1.1", "9.9.9.9"],
+            sudo="",
+        )
+        with patch("openconnect_saml.killswitch.platform.system", return_value="Darwin"):
+            ks = KillSwitch(cfg)
+            rules = ks._pf_render_rules(server_ips=["203.0.113.42"])
+        assert "to 203.0.113.42 port 443" in rules
+        assert "to 1.1.1.1 port 53" in rules
+        assert "to 9.9.9.9 port 53" in rules
+
+    def test_render_rules_with_lan(self):
+        cfg = KillSwitchConfig(allow_lan=True, sudo="")
+        with patch("openconnect_saml.killswitch.platform.system", return_value="Darwin"):
+            ks = KillSwitch(cfg)
+            rules = ks._pf_render_rules(server_ips=[])
+        assert "to 10.0.0.0/8" in rules
+        assert "to 192.168.0.0/16" in rules
+
+    def test_status_reports_pf_backend(self):
+        with (
+            patch("openconnect_saml.killswitch.platform.system", return_value="Darwin"),
+            patch(
+                "openconnect_saml.killswitch.subprocess.run",
+                return_value=_mk(0, "", ""),
+            ),
+        ):
+            ks = KillSwitch(KillSwitchConfig(sudo=""))
+            state = ks.status()
+        assert state["backend"] == "pf"
+        assert state["active"] is False
+        assert state["anchor"] == "openconnect-saml-killswitch"

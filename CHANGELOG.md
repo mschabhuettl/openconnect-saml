@@ -5,6 +5,58 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] – 2026-04-29
+
+### Added
+
+- **Interactive TUI** — new `openconnect-saml tui` subcommand opens a
+  full-screen, keyboard-driven terminal UI with:
+  profile list (↑/↓ to select, Enter / `c` to connect), live status
+  pane with traffic counters and rate, history view (`h`), refresh
+  (`r`), disconnect (`d`), quit (`q`). Requires the `[tui]` extra
+  (`rich`).
+- **Expanded GUI** — `openconnect-saml gui` got a tabbed Tk interface:
+  *Profiles* tab (list with full schema, Add / Edit / Delete dialogs,
+  Connect / Disconnect, log pane), *Status* tab (live counters / rate
+  refreshed every 2s), *History* tab (recent events refreshed every
+  5s), and a global Browser-backend selector in the toolbar.
+- **macOS kill-switch via `pf`** *(experimental)* — second backend for
+  the existing `killswitch enable / disable / status` commands. Loads
+  a self-contained pf anchor (`openconnect-saml-killswitch`) without
+  touching `/etc/pf.conf`. Linux iptables behaviour is unchanged.
+- **`profiles migrate` subcommand** — schema clean-ups for existing
+  configs:
+  - lift legacy `[default_profile]` into `[profiles.default]` so
+    everything is multi-profile-aware
+  - drop unused `[2fauth]` / `[bitwarden]` / `[1password]` / `[pass]`
+    sections that no profile references anymore
+  Dry-run by default; `--apply` persists changes.
+- **`doctor --json`** — machine-readable diagnostics output for
+  monitoring / scripting. Mirrors the exit-code logic of the
+  human-readable variant (0 OK / 1 fail / 2 warn).
+- **`status --watch` bandwidth rate** — TX / RX deltas computed
+  between samples; surfaced as a new `Rate ↑/↓` row in plain / rich /
+  JSON output.
+
+### Changed
+
+- **`app.py` TOTP-provider configuration extracted** into two
+  testable helpers: `resolve_totp_source(args, credentials)` (pure)
+  and `configure_totp_provider(args, cfg, credentials)` (mutating).
+  The `_run` async function shrank by ~80 LoC and gained a new test
+  module (`tests/test_totp_resolver.py`) covering every provider's
+  CLI / config-fallback / missing-config path.
+
+### Notes
+
+- macOS pf backend is marked **experimental**; iptables remains the
+  reference implementation. macOS users should still expect to test
+  with `--browser chrome` for hardware-token flows since Qt-WebEngine
+  on macOS sometimes builds without WebAuthn.
+- All additions are opt-in / backwards-compatible. Existing
+  CLI flags, config files, and saved profiles continue to work
+  unchanged.
+
 ## [0.8.5] – 2026-04-29
 
 ### Changed
