@@ -222,6 +222,80 @@ def _format_timestamp(iso: str) -> str:
         return iso
 
 
+def compute_stats(entries: list[dict]) -> dict:
+    """Aggregate history entries into a summary suitable for ``history stats``.
+
+    Returns a dict with:
+
+    - ``total_connections`` — count of ``connected`` events
+    - ``total_seconds`` — sum of ``duration_seconds`` across ``disconnected`` events
+    - ``avg_seconds`` — mean session duration (only over completed sessions)
+    - ``error_count`` — count of ``error`` events
+    - ``profiles`` — list of {name, count} sorted by count desc
+    - ``most_used_profile`` — convenience accessor for the top profile
+    - ``last_connected`` — ISO timestamp of the most recent ``connected`` event
+    - ``first_seen`` / ``last_seen`` — bounds of the log window
+    """
+    total_connections = 0
+    error_count = 0
+    durations: list[float] = []
+    profiles: dict[str, int] = {}
+    last_connected: str | None = None
+    timestamps: list[str] = []
+
+    for e in entries:
+        ts = e.get("timestamp")
+        if ts:
+            timestamps.append(ts)
+        ev = e.get("event")
+        if ev == "connected":
+            total_connections += 1
+            prof = e.get("profile") or "default"
+            profiles[prof] = profiles.get(prof, 0) + 1
+            if last_connected is None or (ts and ts > last_connected):
+                last_connected = ts
+        elif ev == "disconnected":
+            d = e.get("duration_seconds")
+            if isinstance(d, (int, float)):
+                durations.append(float(d))
+        elif ev == "error":
+            error_count += 1
+
+    profile_list = [
+        {"name": n, "count": c} for n, c in sorted(profiles.items(), key=lambda kv: -kv[1])
+    ]
+    total_seconds = round(sum(durations), 1)
+    avg_seconds = round(total_seconds / len(durations), 1) if durations else 0.0
+
+    return {
+        "total_connections": total_connections,
+        "total_seconds": total_seconds,
+        "avg_seconds": avg_seconds,
+        "error_count": error_count,
+        "profiles": profile_list,
+        "most_used_profile": profile_list[0]["name"] if profile_list else None,
+        "last_connected": last_connected,
+        "first_seen": min(timestamps) if timestamps else None,
+        "last_seen": max(timestamps) if timestamps else None,
+    }
+
+
+def _print_stats(stats: dict) -> None:
+    print("Connection statistics")
+    print("-" * 40)
+    print(f"  Total connections : {stats['total_connections']}")
+    print(f"  Total time        : {_format_duration(stats['total_seconds'])}")
+    print(f"  Average duration  : {_format_duration(stats['avg_seconds'])}")
+    print(f"  Errors            : {stats['error_count']}")
+    if stats["last_connected"]:
+        print(f"  Last connected    : {_format_timestamp(stats['last_connected'])}")
+    if stats["profiles"]:
+        print()
+        print("  Profile usage:")
+        for p in stats["profiles"]:
+            print(f"    {p['name']:<20} {p['count']}")
+
+
 def handle_history_command(args) -> int:
     """Dispatch the ``history`` subcommand."""
     action = getattr(args, "history_action", None) or "show"
@@ -235,6 +309,15 @@ def handle_history_command(args) -> int:
 
     if action == "path":
         print(history_path())
+        return 0
+
+    if action == "stats":
+        entries = read_history()
+        stats = compute_stats(entries)
+        if getattr(args, "json", False):
+            print(json.dumps(stats, indent=2))
+        else:
+            _print_stats(stats)
         return 0
 
     # Default: show

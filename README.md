@@ -393,6 +393,7 @@ openconnect-saml completion install
 --on-disconnect CMD     # Run command after VPN disconnects
 --reset-credentials     # Clear saved keyring entries
 --authenticate FORMAT   # Auth only, output cookie (json|shell)
+--config FILE           # Override XDG config path (or set $OPENCONNECT_SAML_CONFIG)
 ```
 
 ### 🐳 Docker

@@ -262,12 +262,24 @@ def _add_connection_args(parser):
     return parser
 
 
+def _add_global_args(parser):
+    """Global flags shared by every subcommand and the legacy parser."""
+    parser.add_argument(
+        "--config",
+        dest="config_file",
+        metavar="FILE",
+        default=None,
+        help="Path to config.toml (overrides XDG default and $OPENCONNECT_SAML_CONFIG)",
+    )
+
+
 def create_argparser():
     """Create the main argument parser with subcommands."""
     parser = argparse.ArgumentParser(
         prog="openconnect-saml", description=openconnect_saml.__description__
     )
     parser.add_argument("-V", "--version", action="version", version=f"%(prog)s {__version__}")
+    _add_global_args(parser)
 
     subparsers = parser.add_subparsers(dest="command")
 
@@ -334,6 +346,12 @@ def create_argparser():
     # status
     status_parser = subparsers.add_parser("status", help="Show VPN connection status")
     status_parser.add_argument("--watch", "-w", action="store_true", default=False)
+    status_parser.add_argument(
+        "--json",
+        action="store_true",
+        default=False,
+        help="Output status as JSON (suitable for monitoring scripts)",
+    )
 
     # completion
     completion_parser = subparsers.add_parser("completion", help="Generate shell completions")
@@ -373,6 +391,8 @@ def create_argparser():
     history_show.add_argument("--json", action="store_true", default=False)
     history_sub.add_parser("clear", help="Clear the history log")
     history_sub.add_parser("path", help="Print path to history file")
+    history_stats = history_sub.add_parser("stats", help="Show aggregated connection statistics")
+    history_stats.add_argument("--json", action="store_true", default=False)
     history_parser.add_argument("--limit", "-n", type=int, default=None)
     history_parser.add_argument("--json", action="store_true", default=False)
 
@@ -400,6 +420,7 @@ def create_legacy_argparser():
         prog="openconnect-saml", description=openconnect_saml.__description__
     )
     parser.add_argument("-V", "--version", action="version", version=f"%(prog)s {__version__}")
+    _add_global_args(parser)
     _add_connection_args(parser)
     return parser
 
@@ -638,6 +659,19 @@ def _is_legacy_invocation(argv):
     return first.startswith("-") or first not in known_subcommands
 
 
+def _apply_config_override(args):
+    """If --config FILE was given, propagate it via OPENCONNECT_SAML_CONFIG.
+
+    The env var is read by ``config.load`` / ``config.save`` so every callsite
+    picks it up without explicit threading.
+    """
+    config_file = getattr(args, "config_file", None)
+    if config_file:
+        from openconnect_saml.config import CONFIG_ENV_VAR
+
+        os.environ[CONFIG_ENV_VAR] = config_file
+
+
 def main():
     argv = sys.argv[1:]
 
@@ -652,6 +686,7 @@ def main():
     if not _is_legacy_invocation(argv):
         parser = create_argparser()
         args = parser.parse_args(argv)
+        _apply_config_override(args)
 
         if args.command == "connect":
             return _handle_connect(args, parser)
@@ -680,6 +715,7 @@ def main():
     # Legacy mode: no subcommand
     parser = create_legacy_argparser()
     args = parser.parse_args(argv)
+    _apply_config_override(args)
     args.profile_name = None
     return _handle_connect(args, parser)
 

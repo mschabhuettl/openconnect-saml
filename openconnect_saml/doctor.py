@@ -350,6 +350,69 @@ def _check_server_reachable(host: str | None, port: int = 443, timeout: float = 
         )
 
 
+def _check_saml_endpoint(host: str | None, timeout: float = 8.0) -> CheckResult:
+    """HTTP-probe the VPN web endpoint to confirm it speaks AnyConnect SAML.
+
+    A real Cisco AnyConnect / Secure Client SAML endpoint responds with a 200
+    or a 302 redirect to the IdP login page on a plain GET. Anything else
+    (404, certificate errors, plain HTML index) usually means the URL is
+    wrong or the endpoint isn't SAML-enabled.
+    """
+    if not host:
+        return CheckResult(
+            "SAML endpoint",
+            STATUS_SKIP,
+            "no --server provided to test",
+        )
+    try:
+        import requests  # local import: doctor must work without the dev extras
+    except ImportError:
+        return CheckResult(
+            "SAML endpoint",
+            STATUS_SKIP,
+            "requests package missing (core dep)",
+        )
+
+    url = host if "://" in host else f"https://{host}"
+    try:
+        resp = requests.get(url, timeout=timeout, allow_redirects=False)
+    except requests.exceptions.SSLError as exc:
+        return CheckResult(
+            "SAML endpoint",
+            STATUS_FAIL,
+            f"TLS error: {exc}",
+            hint="Server certificate may be invalid or self-signed.",
+        )
+    except requests.exceptions.RequestException as exc:
+        return CheckResult(
+            "SAML endpoint",
+            STATUS_FAIL,
+            str(exc),
+        )
+
+    code = resp.status_code
+    location = resp.headers.get("Location", "")
+    server_hdr = resp.headers.get("Server", "").lower()
+    if code in (200, 302, 303, 307) or "anyconnect" in server_hdr:
+        details = [f"HTTP {code}"]
+        if location:
+            details.append(f"→ {location[:100]}")
+        if server_hdr:
+            details.append(f"server={server_hdr}")
+        return CheckResult(
+            "SAML endpoint",
+            STATUS_OK,
+            url,
+            details=details,
+        )
+    return CheckResult(
+        "SAML endpoint",
+        STATUS_WARN,
+        f"HTTP {code} from {url}",
+        hint="Endpoint reachable but doesn't look like an AnyConnect SAML page.",
+    )
+
+
 def _check_killswitch_state() -> CheckResult:
     """Check whether the kill-switch is currently active (Linux only)."""
     if platform.system() != "Linux":
@@ -419,6 +482,8 @@ def run_all(server: str | None = None) -> list[CheckResult]:
     results.append(_check_env_hygiene())
     results.append(_check_dns_resolution(server))
     results.append(_check_server_reachable(server))
+    if server:
+        results.append(_check_saml_endpoint(server))
     results.append(_check_killswitch_state())
     return results
 

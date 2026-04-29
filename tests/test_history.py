@@ -4,10 +4,74 @@ from __future__ import annotations
 
 import json
 import os
+from types import SimpleNamespace
 
 import pytest
 
 from openconnect_saml import history
+
+
+class TestStats:
+    def test_compute_stats_empty(self):
+        s = history.compute_stats([])
+        assert s["total_connections"] == 0
+        assert s["total_seconds"] == 0
+        assert s["avg_seconds"] == 0
+        assert s["error_count"] == 0
+        assert s["profiles"] == []
+        assert s["most_used_profile"] is None
+
+    def test_compute_stats_basic(self):
+        entries = [
+            {"event": "connected", "profile": "work", "timestamp": "2026-04-01T10:00:00+00:00"},
+            {"event": "disconnected", "duration_seconds": 600.0},
+            {"event": "connected", "profile": "work", "timestamp": "2026-04-02T10:00:00+00:00"},
+            {"event": "disconnected", "duration_seconds": 1200.0},
+            {"event": "connected", "profile": "home", "timestamp": "2026-04-03T10:00:00+00:00"},
+            {"event": "disconnected", "duration_seconds": 300.0},
+            {"event": "error", "message": "boom"},
+        ]
+        s = history.compute_stats(entries)
+        assert s["total_connections"] == 3
+        assert s["total_seconds"] == 2100.0
+        assert s["avg_seconds"] == 700.0
+        assert s["error_count"] == 1
+        assert s["most_used_profile"] == "work"
+        assert s["last_connected"] == "2026-04-03T10:00:00+00:00"
+        # Profiles sorted by count desc
+        assert s["profiles"][0] == {"name": "work", "count": 2}
+        assert s["profiles"][1] == {"name": "home", "count": 1}
+
+    def test_compute_stats_skips_invalid_duration(self):
+        entries = [
+            {"event": "connected", "profile": "p1"},
+            {"event": "disconnected", "duration_seconds": "not a number"},
+            {"event": "disconnected", "duration_seconds": 100.0},
+        ]
+        s = history.compute_stats(entries)
+        assert s["total_seconds"] == 100.0
+        assert s["avg_seconds"] == 100.0
+
+    def test_handle_history_stats(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        history.log_event("connected", "vpn.example.com", profile="work")
+        history.log_event("disconnected", "vpn.example.com", duration_seconds=120.0)
+        args = SimpleNamespace(history_action="stats", json=False)
+        rc = history.handle_history_command(args)
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "Total connections : 1" in out
+        assert "Profile usage:" in out
+        assert "work" in out
+
+    def test_handle_history_stats_json(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        history.log_event("connected", "vpn.example.com", profile="work")
+        args = SimpleNamespace(history_action="stats", json=True)
+        history.handle_history_command(args)
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["total_connections"] == 1
+        assert payload["most_used_profile"] == "work"
 
 
 @pytest.fixture

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import binascii
 import enum
+import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -18,37 +19,77 @@ import xdg.BaseDirectory
 logger = structlog.get_logger()
 
 APP_NAME = "openconnect-saml"
+# Environment variable to override the default XDG config location. CLI flag
+# ``--config FILE`` writes here so all subsequent ``config.load`` / ``config.save``
+# calls honor the override without threading an explicit path through every call.
+CONFIG_ENV_VAR = "OPENCONNECT_SAML_CONFIG"
+
+
+def _override_path() -> Path | None:
+    override = os.environ.get(CONFIG_ENV_VAR)
+    return Path(override) if override else None
+
+
+def _read_path() -> Path | None:
+    """Return the path ``load`` will read from, or ``None`` if no config exists."""
+    if (override := _override_path()) is not None:
+        return override
+    base = xdg.BaseDirectory.load_first_config(APP_NAME)
+    if not base:
+        return None
+    return Path(base) / "config.toml"
+
+
+def _write_path() -> Path:
+    """Return the path ``save`` will write to, creating the parent dir if needed."""
+    if (override := _override_path()) is not None:
+        override.parent.mkdir(parents=True, exist_ok=True)
+        return override
+    base = xdg.BaseDirectory.save_config_path(APP_NAME)
+    return Path(base) / "config.toml"
+
+
+def config_path() -> Path:
+    """Path the CLI / docs should display.
+
+    Resolves to: ``$OPENCONNECT_SAML_CONFIG`` if set, otherwise the existing
+    XDG config file if present, otherwise the path where ``save`` would create
+    one (without actually creating it).
+    """
+    if (override := _override_path()) is not None:
+        return override
+    base = xdg.BaseDirectory.load_first_config(APP_NAME)
+    if base:
+        return Path(base) / "config.toml"
+    fallback = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
+    return Path(fallback) / APP_NAME / "config.toml"
 
 
 def load():
-    path = xdg.BaseDirectory.load_first_config(APP_NAME)
-    if not path:
+    path = _read_path()
+    if path is None or not path.exists():
         return Config()
-    config_path = Path(path) / "config.toml"
-    if not config_path.exists():
-        return Config()
-    with config_path.open() as config_file:
+    with path.open() as config_file:
         try:
             return Config.from_dict(toml.load(config_file))
         except Exception:
             logger.error(
                 "Could not load configuration file, ignoring",
-                path=config_path,
+                path=path,
                 exc_info=True,
             )
             return Config()
 
 
 def save(config):
-    path = xdg.BaseDirectory.save_config_path(APP_NAME)
-    config_path = Path(path) / "config.toml"
+    path = _write_path()
     try:
-        config_path.touch(mode=0o600)
-        config_path.chmod(0o600)
-        with config_path.open("w") as config_file:
+        path.touch(mode=0o600)
+        path.chmod(0o600)
+        with path.open("w") as config_file:
             toml.dump(config.as_dict(), config_file)
     except Exception:
-        logger.error("Could not save configuration file", path=config_path, exc_info=True)
+        logger.error("Could not save configuration file", path=path, exc_info=True)
 
 
 @attr.s

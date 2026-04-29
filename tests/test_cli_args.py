@@ -36,6 +36,36 @@ class TestTotpFlags:
         assert args.totp_source == "none"
 
 
+class TestConfigOverride:
+    def test_global_config_flag(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com", "--config", "/tmp/x.toml"])
+        assert args.config_file == "/tmp/x.toml"
+
+    def test_main_parser_config_flag(self, main_parser):
+        args = main_parser.parse_args(["--config", "/tmp/x.toml", "status"])
+        assert args.config_file == "/tmp/x.toml"
+
+
+class TestStatusJson:
+    def test_status_json_flag(self, main_parser):
+        args = main_parser.parse_args(["status", "--json"])
+        assert args.json is True
+
+    def test_status_json_default(self, main_parser):
+        args = main_parser.parse_args(["status"])
+        assert args.json is False
+
+
+class TestHistoryStats:
+    def test_history_stats_subcommand(self, main_parser):
+        args = main_parser.parse_args(["history", "stats"])
+        assert args.history_action == "stats"
+
+    def test_history_stats_json(self, main_parser):
+        args = main_parser.parse_args(["history", "stats", "--json"])
+        assert args.json is True
+
+
 class TestExportFormatFlag:
     def test_export_format_default_json(self, main_parser):
         args = main_parser.parse_args(["profiles", "export", "work"])

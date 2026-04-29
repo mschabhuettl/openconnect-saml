@@ -6,8 +6,10 @@ and traffic statistics. Requires optional 'rich' dependency.
 Install: pip install openconnect-saml[tui]
 """
 
+import json
 import re
 import subprocess  # nosec
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -251,27 +253,39 @@ def _print_status_rich(status):
     console.print(table)
 
 
+def _print_status_json(status):
+    """Print status as a single JSON object on stdout."""
+    payload = {"connected": False} if status is None else dict(status)
+    json.dump(payload, sys.stdout)
+    sys.stdout.write("\n")
+    sys.stdout.flush()
+
+
 def handle_status_command(args):
     """Handle the 'status' subcommand."""
     watch = getattr(args, "watch", False)
+    as_json = getattr(args, "json", False)
+
+    def _render(status):
+        if as_json:
+            _print_status_json(status)
+            return
+        try:
+            _print_status_rich(status)
+        except Exception:
+            _print_status_plain(status)
 
     if watch:
         try:
             while True:
-                # Clear screen using ANSI escape (avoids shell injection via os.system)
-                print("\033[2J\033[H", end="", flush=True)
-                status = _collect_status()
-                try:
-                    _print_status_rich(status)
-                except Exception:
-                    _print_status_plain(status)
+                if not as_json:
+                    # Clear screen using ANSI escape (avoids shell injection via os.system)
+                    print("\033[2J\033[H", end="", flush=True)
+                _render(_collect_status())
                 time.sleep(2)
         except KeyboardInterrupt:
             return 0
     else:
         status = _collect_status()
-        try:
-            _print_status_rich(status)
-        except Exception:
-            _print_status_plain(status)
+        _render(status)
         return 0 if status else 1

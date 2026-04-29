@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.4] – 2026-04-29
+
+### Added
+
+- **`--config FILE` global flag** — overrides the default XDG config
+  path for the duration of one invocation. Also reads
+  `OPENCONNECT_SAML_CONFIG` from the environment for non-interactive
+  use (CI, multi-tenant setups, automated tests). Works with every
+  subcommand and the legacy CLI form.
+- **`status --json`** — machine-readable output for monitoring
+  scripts / Prometheus exporters / dashboards. Emits a single JSON
+  object per invocation with `connected`, `server`, `interface`, `ip`,
+  `uptime`, `tx`, `rx`, `profile`, `user`, `reconnects`. Compatible
+  with `--watch`.
+- **`history stats` subcommand** — aggregates connect/disconnect
+  events into a summary: total connections, total time online, mean
+  session length, error count, profile usage breakdown, last-connect
+  timestamp. Accepts `--json`. Uses the existing `history.jsonl`
+  audit log; no extra storage.
+- **`doctor` SAML endpoint probe** — when `--server <host>` is
+  provided, runs an HTTPS probe of the URL and verifies the response
+  looks like an AnyConnect SAML page (200/302/303/307 or
+  `Server: ... AnyConnect ...`). Catches misconfigured URLs (404 to
+  the wrong path), TLS errors, and corporate proxies that intercept
+  the gateway.
+
+### Notes
+
+- All additions are opt-in and backwards-compatible. Existing
+  workflows continue to work without changes.
+- The HTTP probe in `doctor` uses `requests` (already a core
+  dependency); it follows redirects only when the server explicitly
+  returns 3xx with a `Location` header.
+
 ## [0.8.3] – 2026-04-29
 
 ### Changed
