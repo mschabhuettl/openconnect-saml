@@ -10,8 +10,15 @@ permissions:
   id-token: write
 
 jobs:
+  tests:
+    # Re-run the full test matrix on the tagged commit. Releases only ship
+    # if every job here is green — including the Windows runner.
+    name: Tests (gate)
+    uses: ./.github/workflows/test.yml
+
   build:
     name: Build package
+    needs: tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

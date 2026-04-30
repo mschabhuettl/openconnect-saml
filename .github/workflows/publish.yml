@@ -9,7 +9,14 @@ permissions:
   id-token: write
 
 jobs:
+  tests:
+    # Re-run the full test matrix on the tagged commit. PyPI only sees
+    # builds where every job here was green — including the Windows runner.
+    name: Tests (gate)
+    uses: ./.github/workflows/test.yml
+
   build:
+    needs: tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
