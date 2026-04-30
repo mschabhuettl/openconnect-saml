@@ -50,6 +50,8 @@ def handle_profiles_command(args):
         return _show_profile(args)
     if action == "migrate":
         return _migrate_profiles(args)
+    if action == "set":
+        return _set_profile_field(args)
     # Default: list profiles
     return _list_profiles()
 
@@ -265,6 +267,103 @@ def _profile_to_exportable(name: str, prof) -> dict:
         twofa.pop("token", None)
         data["2fauth"] = twofa
     return data
+
+
+# ---------------------------------------------------------------------------
+# set — programmatically modify a profile field
+# ---------------------------------------------------------------------------
+
+
+# Fields the user is allowed to edit via ``profiles set``. Booleans coerce
+# from string, ints likewise; everything else is treated as plain text.
+_SETTABLE_FIELDS: dict[str, str] = {
+    "server": "str",
+    "user_group": "str",
+    "name": "str",
+    "browser": "str_or_clear",
+    "notify": "bool_or_clear",
+    "on_connect": "str_or_clear",
+    "on_disconnect": "str_or_clear",
+    "cert": "str_or_clear",
+    "cert_key": "str_or_clear",
+    # nested credentials.* shortcut
+    "username": "str_or_clear",
+    "totp_source": "str_or_clear",
+}
+
+
+def _set_profile_field(args):
+    """Set a single field on a saved profile.
+
+    Empty value (``""``) clears optional/None-able fields. Unknown fields
+    are rejected with a list of allowed names. Booleans accept
+    ``true|false|yes|no|1|0``.
+    """
+    cfg = config.load()
+    name = args.profile_name
+    field = args.field
+    raw_value = args.value
+
+    if name not in cfg.profiles:
+        print(f"Error: profile '{name}' not found.", file=sys.stderr)
+        return 1
+    if field not in _SETTABLE_FIELDS:
+        print(
+            f"Error: unsupported field '{field}'. Allowed: "
+            + ", ".join(sorted(_SETTABLE_FIELDS)),
+            file=sys.stderr,
+        )
+        return 1
+
+    prof = cfg.get_profile(name)
+    field_type = _SETTABLE_FIELDS[field]
+    parsed: object
+
+    is_clear = (
+        field_type.endswith("_or_clear") and raw_value == ""
+    )
+    if field_type == "bool_or_clear":
+        if is_clear:
+            parsed = None
+        else:
+            lower = raw_value.lower()
+            if lower in ("true", "yes", "1", "on", "y"):
+                parsed = True
+            elif lower in ("false", "no", "0", "off", "n"):
+                parsed = False
+            else:
+                print(
+                    f"Error: '{field}' takes a boolean (true/false), got '{raw_value}'",
+                    file=sys.stderr,
+                )
+                return 1
+    else:  # str / str_or_clear
+        parsed = None if is_clear else raw_value
+
+    if field in ("username", "totp_source"):
+        # Nested credentials field
+        if prof.credentials is None:
+            from openconnect_saml.config import Credentials
+
+            prof.credentials = Credentials(username="")
+        if parsed is None:
+            # username can't really be None; clearing means "remove credentials"
+            if field == "username":
+                prof.credentials = None
+            else:
+                # totp_source default = "local"
+                prof.credentials.totp_source = "local"
+        else:
+            setattr(prof.credentials, field, parsed)
+    else:
+        setattr(prof, field, parsed)
+
+    config.save(cfg)
+    if parsed is None:
+        print(f"Cleared {name}.{field}.")
+    else:
+        print(f"Set {name}.{field} = {parsed!r}.")
+    return 0
 
 
 # ---------------------------------------------------------------------------

@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.0] – 2026-04-30
+
+### Added
+
+- **`profiles set NAME FIELD VALUE`** — programmatic, scriptable
+  field editor for saved profiles. No editor invocation required:
+
+  ```bash
+  openconnect-saml profiles set work browser chrome
+  openconnect-saml profiles set work notify true
+  openconnect-saml profiles set work cert ~/certs/work.pem
+  openconnect-saml profiles set work username alice@example.com
+  openconnect-saml profiles set work browser ""        # clear override
+  ```
+
+  Allowed fields: `server`, `user_group`, `name`, `browser`, `notify`,
+  `on_connect`, `on_disconnect`, `cert`, `cert_key`, `username`,
+  `totp_source`. Booleans accept `true|false|yes|no|1|0|on|off`.
+  Empty value clears optional fields.
+
+### Notes
+
+- Pure-additive UX release — no behaviour changes for existing
+  workflows. Useful primarily in CI / automation scripts where
+  `config edit` (which spawns `$EDITOR`) is impractical.
+
 ## [0.16.0] – 2026-04-30
 
 ### Added

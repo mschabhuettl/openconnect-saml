@@ -408,6 +408,22 @@ def create_argparser():
         "--force", action="store_true", default=False, help="Overwrite existing profiles"
     )
 
+    set_parser = profiles_sub.add_parser(
+        "set", help="Programmatically set a single field on a profile"
+    )
+    set_parser.add_argument("profile_name")
+    set_parser.add_argument(
+        "field",
+        help=(
+            "Field to set: server, user_group, name, browser, notify, "
+            "on_connect, on_disconnect, cert, cert_key, username, totp_source"
+        ),
+    )
+    set_parser.add_argument(
+        "value",
+        help='Value (use "" to clear an optional field)',
+    )
+
     migrate_parser = profiles_sub.add_parser(
         "migrate", help="Apply schema fix-ups to the active config (idempotent, dry-run by default)"
     )
