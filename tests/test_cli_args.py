@@ -266,6 +266,40 @@ class TestConfigDiffSubcommand:
         assert args.other_file == "/tmp/other.toml"
 
 
+class TestRunSubcommand:
+    def test_run_basic(self, main_parser):
+        args = main_parser.parse_args(["run", "work", "--", "echo", "hi"])
+        assert args.command == "run"
+        assert args.profile_name == "work"
+        assert args.command_argv  # argparse.REMAINDER keeps the leading --
+
+    def test_run_with_wait(self, main_parser):
+        args = main_parser.parse_args(["run", "--wait", "30", "work", "--", "true"])
+        assert args.run_wait == 30
+
+
+class TestHistoryExportSubcommand:
+    def test_history_export(self, main_parser):
+        args = main_parser.parse_args(["history", "export"])
+        assert args.history_action == "export"
+        assert args.format == "csv"
+
+    def test_history_export_json(self, main_parser):
+        args = main_parser.parse_args(["history", "export", "--format", "json", "-o", "/tmp/h.json"])
+        assert args.format == "json"
+        assert args.file == "/tmp/h.json"
+
+
+class TestSetupAdvanced:
+    def test_setup_advanced_flag(self, main_parser):
+        args = main_parser.parse_args(["setup", "--advanced"])
+        assert args.advanced is True
+
+    def test_setup_default_not_advanced(self, main_parser):
+        args = main_parser.parse_args(["setup"])
+        assert args.advanced is False
+
+
 class TestVersionFlag:
     def test_version_default_false(self, parser):
         args = parser.parse_args(["-s", "vpn.example.com"])

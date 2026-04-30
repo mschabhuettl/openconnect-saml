@@ -544,6 +544,26 @@ def create_argparser():
     # tui
     subparsers.add_parser("tui", help="Interactive terminal UI (rich-based)")
 
+    # run — connect, run a command, disconnect on exit
+    run_parser = subparsers.add_parser(
+        "run",
+        help="Connect to a profile, run a command, then disconnect (transient session)",
+    )
+    run_parser.add_argument(
+        "--wait",
+        dest="run_wait",
+        type=int,
+        default=15,
+        metavar="SECONDS",
+        help="Seconds to wait for the tunnel before running the command (default: 15)",
+    )
+    run_parser.add_argument("profile_name", help="Profile to bring up")
+    run_parser.add_argument(
+        "command_argv",
+        nargs=argparse.REMAINDER,
+        help="The command to run (use -- to separate from arguments)",
+    )
+
     # config
     config_parser = subparsers.add_parser("config", help="Inspect config file")
     config_sub = config_parser.add_subparsers(dest="config_action")
@@ -600,6 +620,17 @@ def create_argparser():
     history_sub.add_parser("path", help="Print path to history file")
     history_stats = history_sub.add_parser("stats", help="Show aggregated connection statistics")
     history_stats.add_argument("--json", action="store_true", default=False)
+    history_export = history_sub.add_parser(
+        "export", help="Export the connection log as CSV or JSON"
+    )
+    history_export.add_argument("--file", "-o", default=None, help="Output file (default: stdout)")
+    history_export.add_argument(
+        "--format",
+        "-f",
+        default="csv",
+        choices=["csv", "json"],
+        help="Export format (default: csv)",
+    )
     history_parser.add_argument("--limit", "-n", type=int, default=None)
     history_parser.add_argument("--json", action="store_true", default=False)
 
@@ -963,6 +994,64 @@ def _handle_tui_command():
     return handle_tui_command()
 
 
+def _handle_run_command(args):
+    """Connect to a profile in the background, run a command, then disconnect.
+
+    The profile is brought up via ``connect --detach --wait``, the user's
+    command runs in the foreground, and on exit (or signal) the profile
+    is disconnected.
+    """
+    import signal as _signal
+    import subprocess as _sp  # nosec
+
+    from openconnect_saml.sessions import kill
+
+    if not getattr(args, "command_argv", None):
+        print("Error: no command given. Try: openconnect-saml run work -- curl …", file=sys.stderr)
+        return 1
+
+    cmd = list(args.command_argv)
+    if cmd and cmd[0] == "--":
+        cmd = cmd[1:]
+    if not cmd:
+        print("Error: no command given after '--'.", file=sys.stderr)
+        return 1
+
+    # 1. Bring the profile up in detached mode and wait for the tunnel.
+    bring_up = [
+        sys.executable,
+        "-m",
+        "openconnect_saml.cli",
+        "connect",
+        args.profile_name,
+        "--detach",
+        "--wait",
+        str(getattr(args, "run_wait", 15)),
+    ]
+    res = _sp.run(bring_up, check=False)  # nosec
+    if res.returncode != 0:
+        print(
+            f"Error: could not bring up profile '{args.profile_name}' (exit {res.returncode}).",
+            file=sys.stderr,
+        )
+        return res.returncode
+
+    # 2. Run the user's command, forwarding stdin/stdout/stderr.
+    rc = 1
+    try:
+        # Don't propagate Ctrl-C to ourselves until the child handled it.
+        _signal.signal(_signal.SIGINT, _signal.SIG_IGN)
+        rc = _sp.run(cmd, check=False).returncode  # nosec
+    finally:
+        _signal.signal(_signal.SIGINT, _signal.SIG_DFL)
+        # 3. Tear the tunnel down regardless of how the command exited.
+        try:
+            kill(args.profile_name)
+        except Exception as exc:  # noqa: BLE001
+            print(f"Warning: could not disconnect '{args.profile_name}': {exc}", file=sys.stderr)
+    return rc
+
+
 def _handle_connect(args, parser):
     """Handle the 'connect' subcommand or legacy invocation."""
     _recover_connect_options_from_remainder(args)
@@ -1046,6 +1135,7 @@ def _is_legacy_invocation(argv):
         "killswitch",
         "gui",
         "tui",
+        "run",
     }
     first = argv[0]
     return first.startswith("-") or first not in known_subcommands
@@ -1160,6 +1250,8 @@ def main():
             return _handle_gui_command()
         if args.command == "tui":
             return _handle_tui_command()
+        if args.command == "run":
+            return _handle_run_command(args)
         if args.command == "disconnect":
             return _handle_disconnect_command(args)
         if args.command == "sessions":

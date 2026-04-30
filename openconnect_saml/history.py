@@ -356,6 +356,45 @@ def compute_stats(entries: list[dict]) -> dict:
     }
 
 
+def _export_history(args) -> int:
+    """Write the connection history to a CSV or JSON file (or stdout)."""
+    import csv
+    import sys
+    from io import StringIO
+
+    fmt = (getattr(args, "format", None) or "csv").lower()
+    target = getattr(args, "file", None)
+    entries = read_history()
+
+    if fmt not in ("csv", "json"):
+        print(f"Error: unsupported format '{fmt}' (choose csv or json)", file=sys.stderr)
+        return 1
+
+    if fmt == "json":
+        payload = json.dumps(entries, indent=2, default=str)
+        if target and target != "-":
+            Path(target).write_text(payload)
+            print(f"✓ Wrote {len(entries)} entries to {target}")
+        else:
+            print(payload)
+        return 0
+
+    columns = ["timestamp", "event", "profile", "user", "server", "duration_seconds", "message"]
+    buf = StringIO()
+    writer = csv.DictWriter(buf, fieldnames=columns)
+    writer.writeheader()
+    for e in entries:
+        writer.writerow({c: e.get(c, "") for c in columns})
+
+    text = buf.getvalue()
+    if target and target != "-":
+        Path(target).write_text(text)
+        print(f"✓ Wrote {len(entries)} entries to {target}")
+    else:
+        sys.stdout.write(text)
+    return 0
+
+
 def _print_stats(stats: dict) -> None:
     print("Connection statistics")
     print("-" * 40)
@@ -395,6 +434,9 @@ def handle_history_command(args) -> int:
         else:
             _print_stats(stats)
         return 0
+
+    if action == "export":
+        return _export_history(args)
 
     # Default: show
     limit = getattr(args, "limit", None)

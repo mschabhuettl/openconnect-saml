@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.0] – 2026-04-30
+
+### Added
+
+- **`run PROFILE -- COMMAND ARGS`** — transient session subcommand:
+  brings the profile up in detached mode, waits for the tunnel,
+  runs `COMMAND` with `ARGS` in the foreground, and tears the
+  tunnel down on exit. Useful for one-shot tasks that need the VPN:
+  ```bash
+  openconnect-saml run work -- curl https://internal.example.com
+  openconnect-saml run --wait 30 work -- ssh prod.internal
+  ```
+- **`history export`** — write the JSONL audit log to CSV or JSON
+  (`--format csv|json`, `-o FILE` for output, stdout otherwise).
+  CSV columns: timestamp, event, profile, user, server,
+  duration_seconds, message — directly importable into spreadsheets
+  or BI tools.
+- **`config validate` checks external TOTP binaries** — when a
+  profile uses `totp_source = 1password / bitwarden / pass`, the
+  validator now warns if the corresponding `op` / `bw` / `pass`
+  binary isn't on PATH, so misconfigurations surface before the
+  first connect attempt rather than during one.
+- **Kill-switch state in status** — the `status` command's plain,
+  rich, and JSON outputs now include a `kill_switch` field. When
+  active, the rich/plain renderers show a bold-red `ACTIVE` row.
+
+### Notes
+
+- All additions are pure-additive; no behaviour changes for users
+  who don't opt in to the new flags. No new runtime dependencies.
+
 ## [0.18.0] – 2026-04-30
 
 ### Added

@@ -168,6 +168,24 @@ def _get_reconnect_count():
     return 0
 
 
+def _check_killswitch_active() -> bool:
+    """Best-effort: ask killswitch.is_active() without raising on platforms
+    that don't support it. Returns False on any error."""
+    try:
+        from openconnect_saml.killswitch import (
+            KillSwitch,
+            KillSwitchConfig,
+            KillSwitchNotSupported,
+        )
+
+        try:
+            return KillSwitch(KillSwitchConfig()).is_active()
+        except KillSwitchNotSupported:
+            return False
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def _collect_status_for_pid(pid: int, cmdline: str, profile: str = "", user: str = ""):
     """Build a status dict for a single openconnect pid."""
     iface = _get_vpn_interface()
@@ -183,6 +201,7 @@ def _collect_status_for_pid(pid: int, cmdline: str, profile: str = "", user: str
         "reconnects": _get_reconnect_count(),
         "profile": profile or "default",
         "user": user or "N/A",
+        "kill_switch": _check_killswitch_active(),
     }
 
     start_time = _get_process_start_time(pid)
@@ -283,6 +302,8 @@ def _print_status_plain(status):
         rx_rate = _format_rate(status.get("rx_rate"))
         print(f"  Rate (↑/↓):   {tx_rate} / {rx_rate}")
     print(f"  Reconnects:   {status['reconnects']}")
+    if status.get("kill_switch"):
+        print("  Kill-switch:  ACTIVE")
 
 
 def _print_status_rich(status):
@@ -320,6 +341,8 @@ def _print_status_rich(status):
         rate_str = f"{_format_rate(status.get('tx_rate'))} / {_format_rate(status.get('rx_rate'))}"
         table.add_row("Rate (↑/↓)", rate_str)
     table.add_row("Reconnects", str(status["reconnects"]))
+    if status.get("kill_switch"):
+        table.add_row("Kill-switch", "[bold red]ACTIVE[/]")
 
     console.print(table)
 

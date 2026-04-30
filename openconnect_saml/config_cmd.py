@@ -187,6 +187,41 @@ def validate_config(path: Path) -> list[tuple[str, str]]:
                         )
                     )
 
+    # External-binary checks for TOTP providers that depend on a CLI tool.
+    # Walk every profile + the global creds; warn once per missing binary.
+    needed_binaries: dict[str, str] = {}
+    for name, prof in (profiles.items() if isinstance(profiles, dict) else []):
+        if not isinstance(prof, dict):
+            continue
+        creds = prof.get("credentials") or {}
+        src = creds.get("totp_source") if isinstance(creds, dict) else None
+        if src == "1password":
+            needed_binaries.setdefault("op", f"profile '{name}' uses 1password")
+        elif src == "bitwarden":
+            needed_binaries.setdefault("bw", f"profile '{name}' uses bitwarden")
+        elif src == "pass":
+            needed_binaries.setdefault("pass", f"profile '{name}' uses pass")
+    global_creds = raw.get("credentials") or {}
+    if isinstance(global_creds, dict):
+        gsrc = global_creds.get("totp_source")
+        if gsrc == "1password":
+            needed_binaries.setdefault("op", "global credentials use 1password")
+        elif gsrc == "bitwarden":
+            needed_binaries.setdefault("bw", "global credentials use bitwarden")
+        elif gsrc == "pass":
+            needed_binaries.setdefault("pass", "global credentials use pass")
+
+    if needed_binaries:
+        for binary, why in needed_binaries.items():
+            if shutil.which(binary) is None:
+                issues.append(
+                    (
+                        "warning",
+                        f"{why} but '{binary}' is not on PATH — install it or "
+                        f"switch totp_source",
+                    )
+                )
+
     _ = cfg  # silence unused
     return issues
 
