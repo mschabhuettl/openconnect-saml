@@ -122,6 +122,48 @@ name (re-exporting overwrites the same NM connection rather than
 duplicating). Secrets are not written; SAML/SSO authentication still
 happens at connect time via the openconnect plugin.
 
+## Profile groups
+
+Bundle profiles together so a single command brings up several VPNs
+at once (or stops all of them):
+
+```bash
+openconnect-saml groups add work vpn-eu vpn-us
+openconnect-saml groups list
+openconnect-saml groups connect work       # all members start in --detach mode
+openconnect-saml groups disconnect work    # stops every group member
+openconnect-saml groups remove work
+```
+
+Or in `config.toml`:
+
+```toml
+[profile_groups]
+work = ["vpn-eu", "vpn-us"]
+home = ["vpn-home"]
+```
+
+`groups connect` runs each member through the regular ``connect``
+flow (with `--detach`), so per-profile settings, kill-switch, hooks,
+and history all behave the same way.
+
+## Importing AnyConnect XML profiles
+
+Cisco's AnyConnect ships per-tenant `.xml` profile files at
+`/opt/cisco/anyconnect/profile/*.xml`. To bulk-import them as
+openconnect-saml profiles:
+
+```bash
+openconnect-saml profiles import-xml /opt/cisco/anyconnect/profile/MyVpn.xml
+openconnect-saml profiles import-xml MyVpn.xml --prefix cisco-
+openconnect-saml profiles import-xml MyVpn.xml --force   # overwrite existing
+```
+
+Each `<HostEntry>` block becomes one saved profile keyed by
+`HostName` (with spaces converted to underscores). `--prefix STR`
+namespaces the imports — useful when bulk-importing several files
+that may share host names.
+
 ## Schema migrations
 
 When the project's config schema gains optional fields or deprecates

@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] – 2026-04-30
+
+### Added
+
+- **`profiles import-xml FILE`** — bulk-import VPN profiles from an
+  AnyConnect ``.xml`` profile file (the same format
+  ``openconnect`` already reads from
+  ``/opt/cisco/anyconnect/profile/*.xml``). Each ``HostEntry`` becomes
+  one saved profile keyed by ``HostName``. ``--prefix STR`` namespaces
+  the imports; ``--force`` overwrites existing profiles with the same
+  name.
+
+- **Profile groups** — `[profile_groups.<name>]` lists profile keys
+  to connect / disconnect together:
+
+  ```toml
+  [profile_groups]
+  work = ["vpn-eu", "vpn-us"]
+  ```
+
+  Or via CLI: `openconnect-saml groups add work vpn-eu vpn-us`. Then
+  `openconnect-saml groups connect work` brings every member up in
+  detached mode and `groups disconnect work` stops them all. Other
+  actions: `groups list`, `groups remove`.
+
+### Notes
+
+- Pure-additive release; existing CLI flags, configs, and profiles
+  continue to work unchanged.
+- ``Config.profile_groups`` is a new top-level dict (default empty).
+  Older tools loading the config see an empty dict if the field is
+  absent, no migration required.
+
 ## [0.11.0] – 2026-04-30
 
 ### Added

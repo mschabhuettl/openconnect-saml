@@ -36,6 +36,8 @@ def handle_profiles_command(args):
         return _export_profile(args)
     if action == "import":
         return _import_profile(args)
+    if action == "import-xml":
+        return _import_xml_profile(args)
     if action == "rename":
         return _rename_profile(args)
     if action == "show":
@@ -257,6 +259,73 @@ def _profile_to_exportable(name: str, prof) -> dict:
         twofa.pop("token", None)
         data["2fauth"] = twofa
     return data
+
+
+# ---------------------------------------------------------------------------
+# import-xml — read Cisco AnyConnect .xml profiles and create entries
+# ---------------------------------------------------------------------------
+
+
+def _import_xml_profile(args):
+    """Import VPN profiles from a Cisco AnyConnect ``.xml`` profile file.
+
+    The format is the same one ``openconnect`` itself reads from
+    ``/opt/cisco/anyconnect/profile/*.xml`` — it lists ``HostEntry`` blocks
+    with HostName / HostAddress / UserGroup. We turn each entry into a
+    saved openconnect-saml profile.
+
+    Existing profiles with the same ``HostName`` are skipped unless
+    ``--force`` is passed. ``--prefix STR`` prefixes every imported
+    profile name (useful when bulk-importing multiple XML files).
+    """
+    source = getattr(args, "file", None)
+    overwrite = getattr(args, "force", False)
+    prefix = getattr(args, "prefix", "") or ""
+
+    if not source or not Path(source).exists():
+        print(f"Error: file '{source}' not found.", file=sys.stderr)
+        return 1
+
+    from openconnect_saml.profile import _get_profiles_from_one_file
+
+    try:
+        host_profiles = _get_profiles_from_one_file(Path(source))
+    except Exception as exc:  # noqa: BLE001 — surface XML parser errors directly
+        print(f"Error: failed to parse '{source}': {exc}", file=sys.stderr)
+        return 1
+
+    if not host_profiles:
+        print(f"No HostEntry elements found in {source}.")
+        return 1
+
+    cfg = config.load()
+    imported = 0
+    skipped = 0
+    for hp in host_profiles:
+        # HostProfile.name maps to AnyConnect's HostName which is also the
+        # display name; use it as the profile key.
+        raw_name = (hp.name or hp.address or "").strip()
+        if not raw_name:
+            skipped += 1
+            continue
+        profile_key = f"{prefix}{raw_name}".replace(" ", "_")
+        if profile_key in cfg.profiles and not overwrite:
+            print(f"  - '{profile_key}' already exists (use --force to overwrite), skipping.")
+            skipped += 1
+            continue
+        prof_data = {
+            "server": hp.address,
+            "user_group": hp.user_group or "",
+            "name": raw_name,
+        }
+        cfg.add_profile(profile_key, prof_data)
+        print(f"  ✓ imported '{profile_key}' → {hp.address}")
+        imported += 1
+
+    if imported:
+        config.save(cfg)
+    print(f"\nImported {imported} profile(s), skipped {skipped}.")
+    return 0 if imported else 1
 
 
 # ---------------------------------------------------------------------------

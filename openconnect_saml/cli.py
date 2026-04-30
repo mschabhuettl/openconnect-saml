@@ -373,6 +373,40 @@ def create_argparser():
         help="Persist changes (default: dry-run)",
     )
 
+    xml_parser = profiles_sub.add_parser(
+        "import-xml", help="Import HostEntry blocks from an AnyConnect .xml profile"
+    )
+    xml_parser.add_argument("file", help="Path to a Cisco AnyConnect .xml profile")
+    xml_parser.add_argument(
+        "--prefix", default="", help="Prefix every imported profile name (default: none)"
+    )
+    xml_parser.add_argument(
+        "--force",
+        action="store_true",
+        default=False,
+        help="Overwrite existing profiles with the same name",
+    )
+
+    # groups
+    groups_parser = subparsers.add_parser(
+        "groups", help="Manage and connect groups of profiles together"
+    )
+    groups_sub = groups_parser.add_subparsers(dest="groups_action")
+    groups_sub.add_parser("list", help="List configured profile groups")
+    groups_add = groups_sub.add_parser("add", help="Create or update a group")
+    groups_add.add_argument("group_name")
+    groups_add.add_argument("members", nargs="+", help="Profile names (in connect order)")
+    groups_remove = groups_sub.add_parser("remove", help="Delete a group")
+    groups_remove.add_argument("group_name")
+    groups_connect = groups_sub.add_parser(
+        "connect", help="Connect every profile in a group (uses --detach)"
+    )
+    groups_connect.add_argument("group_name")
+    groups_disconnect = groups_sub.add_parser(
+        "disconnect", help="Disconnect every profile in a group"
+    )
+    groups_disconnect.add_argument("group_name")
+
     # disconnect
     disconnect_parser = subparsers.add_parser(
         "disconnect", help="Stop a running VPN session by profile name"
@@ -649,6 +683,98 @@ def _handle_gui_command():
     return gui_main()
 
 
+def _handle_groups_command(args):
+    from openconnect_saml import config as _config
+    from openconnect_saml.sessions import kill, list_active
+
+    action = getattr(args, "groups_action", None) or "list"
+    cfg = _config.load()
+    groups = getattr(cfg, "profile_groups", None) or {}
+
+    if action == "list":
+        if not groups:
+            print("No profile groups configured.")
+            print("Add one with: openconnect-saml groups add <name> <profile1> <profile2> ...")
+            return 0
+        print(f"{'Group':<20} Members")
+        print("-" * 60)
+        for gname, members in sorted(groups.items()):
+            print(f"{gname:<20} {', '.join(members)}")
+        return 0
+
+    if action == "add":
+        gname = args.group_name
+        members = list(args.members)
+        # Validate every member exists
+        missing = [m for m in members if m not in cfg.profiles]
+        if missing:
+            print(f"Error: unknown profile(s): {', '.join(missing)}", file=sys.stderr)
+            return 1
+        groups[gname] = members
+        cfg.profile_groups = groups
+        _config.save(cfg)
+        print(f"Saved group '{gname}' → {', '.join(members)}")
+        return 0
+
+    if action == "remove":
+        gname = args.group_name
+        if gname not in groups:
+            print(f"Error: group '{gname}' not found.", file=sys.stderr)
+            return 1
+        del groups[gname]
+        cfg.profile_groups = groups
+        _config.save(cfg)
+        print(f"Removed group '{gname}'.")
+        return 0
+
+    if action == "connect":
+        gname = args.group_name
+        if gname not in groups:
+            print(f"Error: group '{gname}' not found.", file=sys.stderr)
+            return 1
+        members = list(groups[gname])
+        if not members:
+            print(f"Group '{gname}' has no members.", file=sys.stderr)
+            return 1
+        import subprocess as _sp  # nosec
+
+        rc = 0
+        for profile in members:
+            cmd = [
+                sys.executable,
+                "-m",
+                "openconnect_saml.cli",
+                "connect",
+                profile,
+                "--detach",
+            ]
+            print(f"→ Connecting '{profile}'...")
+            res = _sp.run(cmd, check=False)  # nosec
+            if res.returncode != 0:
+                print(f"  ! '{profile}' failed (exit {res.returncode})")
+                rc = res.returncode
+        return rc
+
+    if action == "disconnect":
+        gname = args.group_name
+        if gname not in groups:
+            print(f"Error: group '{gname}' not found.", file=sys.stderr)
+            return 1
+        active_names = {s.profile for s in list_active()}
+        ok = 0
+        for profile in groups[gname]:
+            if profile in active_names and kill(profile):
+                print(f"Disconnected '{profile}'.")
+                ok += 1
+        if not ok:
+            print(f"No active sessions in group '{gname}'.")
+            return 1
+        return 0
+
+    print(f"Unknown groups action: {action}")
+    return 1
+
+
 def _handle_disconnect_command(args):
     from openconnect_saml.sessions import kill, list_active
 
@@ -764,6 +890,7 @@ def _is_legacy_invocation(argv):
         "connect",
         "disconnect",
         "sessions",
+        "groups",
         "profiles",
         "status",
         "completion",
@@ -835,6 +962,8 @@ def main():
             return _handle_disconnect_command(args)
         if args.command == "sessions":
             return _handle_sessions_command(args)
+        if args.command == "groups":
+            return _handle_groups_command(args)
 
         parser.print_help()
         return 0

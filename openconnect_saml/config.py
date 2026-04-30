@@ -433,6 +433,15 @@ def _convert_profiles(val):
 SCHEMA_VERSION = 1
 
 
+def _convert_profile_groups(val):
+    """Coerce profile_groups into ``dict[str, list[str]]``."""
+    if val is None:
+        return {}
+    if not isinstance(val, dict):
+        return {}
+    return {str(k): [str(m) for m in (v or [])] for k, v in val.items()}
+
+
 @attr.s
 class Config(ConfigNode):
     schema_version = attr.ib(default=SCHEMA_VERSION, converter=int)
@@ -443,6 +452,7 @@ class Config(ConfigNode):
     onepassword = attr.ib(default=None, converter=_convert_onepassword)
     pass_ = attr.ib(default=None, converter=_convert_pass)
     profiles = attr.ib(factory=dict, converter=_convert_profiles)
+    profile_groups = attr.ib(factory=dict, converter=_convert_profile_groups)
     active_profile = attr.ib(default=None)
     notifications = attr.ib(default=False, converter=bool)
     connection_history = attr.ib(default=True, converter=bool)
