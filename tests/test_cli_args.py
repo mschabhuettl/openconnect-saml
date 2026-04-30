@@ -237,6 +237,30 @@ class TestCertFlags:
         assert args.cert_key is None
 
 
+class TestAuthOnlyFlag:
+    def test_auth_only_default(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com"])
+        assert args.auth_only is False
+
+    def test_auth_only_set(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com", "--auth-only"])
+        assert args.auth_only is True
+
+
+class TestVersionFlag:
+    def test_version_default_false(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com"])
+        assert args.version is False
+
+    def test_version_set(self, parser):
+        args = parser.parse_args(["--version"])
+        assert args.version is True
+
+    def test_check_set(self, parser):
+        args = parser.parse_args(["--version", "--check"])
+        assert args.check is True
+
+
 class TestExportEncrypted:
     def test_format_encrypted_accepted(self, main_parser):
         args = main_parser.parse_args(["profiles", "export", "work", "--format", "encrypted"])

@@ -58,6 +58,13 @@ def _add_connection_args(parser):
         nargs="?",
         default=False,
     )
+    auth_settings.add_argument(
+        "--auth-only",
+        dest="auth_only",
+        action="store_true",
+        default=False,
+        help="Friendly alias for --authenticate shell (auth, print cookie, exit)",
+    )
 
     parser.add_argument(
         "--headless",
@@ -308,7 +315,19 @@ def create_argparser():
     parser = argparse.ArgumentParser(
         prog="openconnect-saml", description=openconnect_saml.__description__
     )
-    parser.add_argument("-V", "--version", action="version", version=f"%(prog)s {__version__}")
+    parser.add_argument(
+        "-V",
+        "--version",
+        action="store_true",
+        default=False,
+        help="Show version and exit (combine with --check to look up the latest on PyPI)",
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        default=False,
+        help="With --version: also fetch the latest release from PyPI",
+    )
     _add_global_args(parser)
 
     subparsers = parser.add_subparsers(dest="command")
@@ -547,7 +566,19 @@ def create_legacy_argparser():
     parser = argparse.ArgumentParser(
         prog="openconnect-saml", description=openconnect_saml.__description__
     )
-    parser.add_argument("-V", "--version", action="version", version=f"%(prog)s {__version__}")
+    parser.add_argument(
+        "-V",
+        "--version",
+        action="store_true",
+        default=False,
+        help="Show version and exit",
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        default=False,
+        help="With --version: also fetch the latest release from PyPI",
+    )
     _add_global_args(parser)
     _add_connection_args(parser)
     return parser
@@ -876,6 +907,8 @@ def _handle_connect(args, parser):
     _recover_connect_options_from_remainder(args)
     if args.browser and args.browser == "headless":
         args.headless = True
+    if getattr(args, "auth_only", False) and not args.authenticate:
+        args.authenticate = "shell"
 
     if (getattr(args, "profile_path", None) or getattr(args, "use_profile_selector", False)) and (
         args.server or args.usergroup
@@ -978,6 +1011,52 @@ def _apply_quiet_flag(args):
         args.log_level = LogLevel.WARNING
 
 
+def _maybe_first_run_hint(argv) -> None:
+    """Print a one-shot suggestion to run ``setup`` when the user has no
+    config yet and ran a command that needs one. Only fires on TTYs and
+    only when no command-line server was given.
+    """
+    if not sys.stdout.isatty():
+        return
+    if not argv:
+        return
+    # Skip for setup itself, completion helpers, doctor, version
+    skip = {"setup", "completion", "doctor", "config", "--version", "-V"}
+    if argv[0] in skip:
+        return
+    # If the user already provided --server/-s, no first-run hint needed
+    if any(a in ("-s", "--server") for a in argv):
+        return
+    cfg = config.load()
+    if cfg.profiles or cfg.default_profile:
+        return
+    print(
+        "👋 Looks like this is your first run — no profiles configured yet.",
+        file=sys.stderr,
+    )
+    print(
+        "   Run `openconnect-saml setup` to create one interactively, "
+        "or pass --server vpn.example.com directly.",
+        file=sys.stderr,
+    )
+
+
+def _print_version(check: bool = False) -> int:
+    print(f"openconnect-saml {__version__}")
+    if check:
+        from openconnect_saml.version_check import check as _check
+
+        info = _check()
+        if info.latest is None:
+            print("(could not contact PyPI to check for updates)")
+            return 0
+        if info.is_outdated:
+            print(info.hint_line() or "")
+        else:
+            print("You are running the latest version.")
+    return 0
+
+
 def main():
     argv = sys.argv[1:]
 
@@ -992,8 +1071,11 @@ def main():
     if not _is_legacy_invocation(argv):
         parser = create_argparser()
         args = parser.parse_args(argv)
+        if getattr(args, "version", False):
+            return _print_version(check=getattr(args, "check", False))
         _apply_config_override(args)
         _apply_quiet_flag(args)
+        _maybe_first_run_hint(argv)
 
         if args.command == "connect":
             return _handle_connect(args, parser)
@@ -1030,7 +1112,10 @@ def main():
     # Legacy mode: no subcommand
     parser = create_legacy_argparser()
     args = parser.parse_args(argv)
+    if getattr(args, "version", False):
+        return _print_version(check=getattr(args, "check", False))
     _apply_config_override(args)
+    _apply_quiet_flag(args)
     args.profile_name = None
     return _handle_connect(args, parser)
 

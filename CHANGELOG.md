@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] – 2026-04-30
+
+### Added
+
+- **`--version --check`** — opt-in PyPI lookup that surfaces a hint
+  when a newer release is available. Best-effort with a 3-second
+  timeout; never blocks normal startup. Plain `--version` still
+  works exactly as before.
+- **First-run hint** — running an interactive command on a system
+  with no profiles configured prints a one-line "👋 Looks like
+  this is your first run — try `openconnect-saml setup`" reminder.
+  Skipped on non-TTYs and for `setup` / `completion` / `doctor` /
+  `config` / `--version`.
+- **`--auth-only`** — friendly alias for `--authenticate shell`,
+  the most-used auth-only invocation. Useful for CI / scripts that
+  just want to print the cookie and exit.
+
+### Notes
+
+- Pure UX release. No new runtime dependencies, no behaviour changes
+  for users who don't opt in to the new flags.
+- Network requests for `--version --check` go to
+  `https://pypi.org/pypi/openconnect-saml/json` and respect a 3s
+  timeout. Failure is silent — offline use is unaffected.
+
 ## [0.14.0] – 2026-04-30
 
 ### Added
