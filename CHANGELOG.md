@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.0] – 2026-04-30
+
+### Added
+
+- **`NO_COLOR` support** — when the env var is set (any value, per
+  https://no-color.org) or stdout isn't a TTY, `doctor` and the plain
+  `status` renderer fall back to ASCII glyphs (`OK` / `FAIL` / `--`)
+  instead of UTF-8 symbols. Easier to grep, friendlier for log
+  collectors and CI.
+- **`connect --background`** — alias for `--detach`. Same semantics,
+  the more obvious spelling for new users.
+- **`connect --wait SECONDS`** — when used with `--detach`, blocks
+  the supervisor for up to `SECONDS` until the tunnel interface
+  appears. Useful in scripts that need the VPN actually up before
+  proceeding (e.g. ``openconnect-saml connect work --detach --wait 30``).
+- **`config diff FILE`** — produces a redacted unified diff between
+  the active config and another TOML file. Secrets are stripped on
+  both sides before diffing, so it's safe to share the output for
+  troubleshooting.
+- **`setup --advanced`** — adds prompts for client certificate path,
+  on-connect / on-disconnect hooks, and a per-profile kill-switch
+  flag. The default (non-advanced) wizard is unchanged for
+  beginners.
+- **`doctor` reports active sessions** — new "Active sessions" check
+  shows how many recorded VPN sessions are currently live, with the
+  profile names listed.
+
+### Notes
+
+- All additions are pure UX / scripting wins; no behaviour changes
+  for users who don't opt in to the new flags. No new runtime
+  dependencies.
+
 ## [0.17.0] – 2026-04-30
 
 ### Added

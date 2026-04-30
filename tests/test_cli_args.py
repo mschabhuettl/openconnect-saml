@@ -98,6 +98,18 @@ class TestDetachFlag:
         args = parser.parse_args(["-s", "vpn.example.com", "--detach"])
         assert args.detach is True
 
+    def test_background_alias(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com", "--background"])
+        assert args.detach is True
+
+    def test_wait_default(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com"])
+        assert args.wait_seconds == 0
+
+    def test_wait_value(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com", "--wait", "10"])
+        assert args.wait_seconds == 10
+
     def test_detach_on_connect_subcommand(self, main_parser):
         # --detach before the profile name is consumed by argparse directly.
         args = main_parser.parse_args(
@@ -245,6 +257,13 @@ class TestAuthOnlyFlag:
     def test_auth_only_set(self, parser):
         args = parser.parse_args(["-s", "vpn.example.com", "--auth-only"])
         assert args.auth_only is True
+
+
+class TestConfigDiffSubcommand:
+    def test_diff_action(self, main_parser):
+        args = main_parser.parse_args(["config", "diff", "/tmp/other.toml"])
+        assert args.config_action == "diff"
+        assert args.other_file == "/tmp/other.toml"
 
 
 class TestVersionFlag:

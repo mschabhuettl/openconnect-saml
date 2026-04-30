@@ -8,21 +8,38 @@ from openconnect_saml import doctor
 
 
 class TestCheckResult:
-    def test_symbol_ok(self):
+    def test_symbol_ok_unicode(self):
+        with patch("openconnect_saml.doctor._plain_output", return_value=False):
+            cr = doctor.CheckResult(name="x", status=doctor.STATUS_OK)
+            assert cr.symbol == "✓"
+
+    def test_symbol_warn_unicode(self):
+        with patch("openconnect_saml.doctor._plain_output", return_value=False):
+            cr = doctor.CheckResult(name="x", status=doctor.STATUS_WARN)
+            assert cr.symbol == "!"
+
+    def test_symbol_fail_unicode(self):
+        with patch("openconnect_saml.doctor._plain_output", return_value=False):
+            cr = doctor.CheckResult(name="x", status=doctor.STATUS_FAIL)
+            assert cr.symbol == "✗"
+
+    def test_symbol_skip_unicode(self):
+        with patch("openconnect_saml.doctor._plain_output", return_value=False):
+            cr = doctor.CheckResult(name="x", status=doctor.STATUS_SKIP)
+            assert cr.symbol == "~"
+
+    def test_symbol_falls_back_to_ascii_when_no_color(self):
+        with patch("openconnect_saml.doctor._plain_output", return_value=True):
+            cr = doctor.CheckResult(name="x", status=doctor.STATUS_OK)
+            assert cr.symbol == "OK"
+            cr = doctor.CheckResult(name="x", status=doctor.STATUS_FAIL)
+            assert cr.symbol == "FAIL"
+
+    def test_no_color_env_triggers_ascii(self, monkeypatch):
+        monkeypatch.setenv("NO_COLOR", "1")
+        # _plain_output reads NO_COLOR directly, so this should kick in
         cr = doctor.CheckResult(name="x", status=doctor.STATUS_OK)
-        assert cr.symbol == "✓"
-
-    def test_symbol_warn(self):
-        cr = doctor.CheckResult(name="x", status=doctor.STATUS_WARN)
-        assert cr.symbol == "!"
-
-    def test_symbol_fail(self):
-        cr = doctor.CheckResult(name="x", status=doctor.STATUS_FAIL)
-        assert cr.symbol == "✗"
-
-    def test_symbol_skip(self):
-        cr = doctor.CheckResult(name="x", status=doctor.STATUS_SKIP)
-        assert cr.symbol == "~"
+        assert cr.symbol == "OK"
 
 
 class TestPythonVersion:

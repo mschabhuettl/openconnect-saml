@@ -192,6 +192,53 @@ server = "vpn.example.com"
         assert parsed["2fauth"]["token"] == "***"
 
 
+class TestCmdDiff:
+    def test_diff_identical(self, tmp_config_dir, capsys):
+        write_config(
+            tmp_config_dir,
+            """
+[profiles.work]
+server = "vpn.example.com"
+""",
+        )
+        other = tmp_config_dir.parent / "other.toml"
+        other.write_text(
+            """
+[profiles.work]
+server = "vpn.example.com"
+"""
+        )
+        rc = config_cmd._cmd_diff(str(other))
+        assert rc == 0
+        assert "no differences" in capsys.readouterr().out
+
+    def test_diff_with_changes(self, tmp_config_dir, capsys):
+        write_config(
+            tmp_config_dir,
+            """
+[profiles.work]
+server = "old.example.com"
+""",
+        )
+        other = tmp_config_dir.parent / "other.toml"
+        other.write_text(
+            """
+[profiles.work]
+server = "new.example.com"
+"""
+        )
+        rc = config_cmd._cmd_diff(str(other))
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "old.example.com" in out
+        assert "new.example.com" in out
+
+    def test_diff_other_missing(self, tmp_config_dir, capsys):
+        write_config(tmp_config_dir, '[profiles.work]\nserver = "x"\n')
+        rc = config_cmd._cmd_diff("/nonexistent.toml")
+        assert rc == 1
+
+
 class TestCmdValidate:
     def test_valid(self, tmp_config_dir, capsys):
         write_config(

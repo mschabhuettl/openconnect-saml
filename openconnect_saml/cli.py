@@ -90,10 +90,23 @@ def _add_connection_args(parser):
     parser.add_argument("--on-disconnect", help="Command to run when disconnecting", default="")
     parser.add_argument(
         "--detach",
+        "--background",
+        dest="detach",
         action="store_true",
         default=False,
         help="Daemonize after authentication; openconnect runs in the background. "
         "Stop with 'openconnect-saml disconnect [PROFILE]'",
+    )
+    parser.add_argument(
+        "--wait",
+        dest="wait_seconds",
+        type=int,
+        default=0,
+        metavar="SECONDS",
+        help=(
+            "With --detach: block up to SECONDS until the tunnel interface "
+            "is up before returning. Default 0 (return immediately)."
+        ),
     )
     parser.add_argument(
         "--ac-version", help="AnyConnect Version (default: %(default)s)", default="4.7.00136"
@@ -514,7 +527,13 @@ def create_argparser():
     )
 
     # setup
-    subparsers.add_parser("setup", help="Interactive configuration wizard")
+    setup_parser = subparsers.add_parser("setup", help="Interactive configuration wizard")
+    setup_parser.add_argument(
+        "--advanced",
+        action="store_true",
+        default=False,
+        help="Also prompt for cert auth, on-connect/on-disconnect hooks, kill-switch",
+    )
 
     # service
     subparsers.add_parser("service", help="Manage systemd VPN service", add_help=False)
@@ -533,6 +552,10 @@ def create_argparser():
     config_show.add_argument("--json", action="store_true", default=False)
     config_sub.add_parser("validate", help="Validate config file")
     config_sub.add_parser("edit", help="Open config file in $EDITOR")
+    diff_parser = config_sub.add_parser(
+        "diff", help="Show a unified diff against another config file"
+    )
+    diff_parser.add_argument("other_file", help="Path to the other TOML config")
 
     # doctor
     doctor_parser = subparsers.add_parser("doctor", help="Run diagnostic checks")
@@ -750,10 +773,11 @@ def _handle_completion_command(args):
     return handle_completion_command(args)
 
 
-def _handle_setup_command():
+def _handle_setup_command(args=None):
     from openconnect_saml.setup_wizard import run_setup_wizard
 
-    return run_setup_wizard()
+    advanced = bool(getattr(args, "advanced", False)) if args is not None else False
+    return run_setup_wizard(advanced=advanced)
 
 
 def _handle_config_command(args):
@@ -1123,7 +1147,7 @@ def main():
         if args.command == "completion":
             return _handle_completion_command(args)
         if args.command == "setup":
-            return _handle_setup_command()
+            return _handle_setup_command(args)
         if args.command == "config":
             return _handle_config_command(args)
         if args.command == "doctor":

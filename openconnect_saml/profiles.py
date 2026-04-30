@@ -309,8 +309,7 @@ def _set_profile_field(args):
         return 1
     if field not in _SETTABLE_FIELDS:
         print(
-            f"Error: unsupported field '{field}'. Allowed: "
-            + ", ".join(sorted(_SETTABLE_FIELDS)),
+            f"Error: unsupported field '{field}'. Allowed: " + ", ".join(sorted(_SETTABLE_FIELDS)),
             file=sys.stderr,
         )
         return 1
@@ -319,9 +318,7 @@ def _set_profile_field(args):
     field_type = _SETTABLE_FIELDS[field]
     parsed: object
 
-    is_clear = (
-        field_type.endswith("_or_clear") and raw_value == ""
-    )
+    is_clear = field_type.endswith("_or_clear") and raw_value == ""
     if field_type == "bool_or_clear":
         if is_clear:
             parsed = None

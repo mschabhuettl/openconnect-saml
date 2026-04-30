@@ -188,6 +188,7 @@ def run(args):
             on_pid=_record_pid,
             cert=cert,
             cert_key=cert_key,
+            wait_seconds=getattr(args, "wait_seconds", 0),
         )
         return rc
     except KeyboardInterrupt:
@@ -682,6 +683,33 @@ def authenticate_to(
     ).authenticate(display_mode)
 
 
+def _wait_for_tunnel(deadline_seconds: float) -> bool:
+    """Block until a ``tun*``/``utun*`` interface appears, or timeout.
+
+    Uses ``ip link show`` (Linux) or ``ifconfig`` (macOS) — best-effort,
+    failure is silent. Returns True if a tunnel was observed.
+    """
+    import time as _time
+
+    end = _time.monotonic() + deadline_seconds
+    while _time.monotonic() < end:
+        try:
+            from openconnect_saml.tui import _get_vpn_interface
+
+            iface = _get_vpn_interface()
+            if iface:
+                logger.info("Tunnel up", interface=iface)
+                return True
+        except Exception:  # noqa: BLE001
+            pass
+        _time.sleep(0.5)
+    logger.warning(
+        "--wait timeout: tunnel interface didn't appear in time",
+        deadline_seconds=deadline_seconds,
+    )
+    return False
+
+
 def run_openconnect(
     auth_info,
     host,
@@ -698,6 +726,7 @@ def run_openconnect(
     on_pid=None,
     cert=None,
     cert_key=None,
+    wait_seconds=0,
 ):
     """Spawn the openconnect process.
 
@@ -794,6 +823,8 @@ def run_openconnect(
                 logger.warning("on_pid callback raised", error=str(exc))
         if on_connect:
             handle_connect(on_connect)
+        if wait_seconds and wait_seconds > 0:
+            _wait_for_tunnel(wait_seconds)
         logger.info("openconnect detached", pid=proc.pid)
         return 0
 

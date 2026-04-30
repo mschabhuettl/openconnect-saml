@@ -249,14 +249,26 @@ def _collect_all_statuses():
     return out
 
 
+def _plain_output() -> bool:
+    """Honor NO_COLOR / non-TTY output for the plain status renderer."""
+    import os
+
+    if os.environ.get("NO_COLOR") is not None:
+        return True
+    return not sys.stdout.isatty()
+
+
 def _print_status_plain(status):
     """Print status without rich (fallback)."""
+    plain = _plain_output()
+    disconnected_glyph = "[Disconnected]" if plain else "❌ openconnect-saml — Disconnected"
+    connected_glyph = "[Connected]" if plain else "🔐 openconnect-saml — Connected"
     if not status:
-        print("❌ openconnect-saml — Disconnected")
+        print(disconnected_glyph)
         print("No active VPN connection found.")
         return
 
-    print("🔐 openconnect-saml — Connected")
+    print(connected_glyph)
     print()
     print(f"  Profile:      {status['profile']}")
     print(f"  Server:       {status['server']}")

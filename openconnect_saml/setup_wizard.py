@@ -139,8 +139,15 @@ def _maybe_offer_xml_import() -> bool:
     return False
 
 
-def run_setup_wizard() -> int:
+def run_setup_wizard(advanced: bool = False) -> int:
     """Run the interactive setup wizard.
+
+    Parameters
+    ----------
+    advanced
+        When True, additionally asks for per-profile overrides (cert,
+        on_connect / on_disconnect hooks, kill-switch). When False
+        (default) keeps the wizard short and beginner-friendly.
 
     Returns
     -------
@@ -228,6 +235,22 @@ def run_setup_wizard() -> int:
     # 7. Notifications
     notifications = _prompt_yes_no("Enable desktop notifications?", default=False)
 
+    # 7b. Advanced options (per-profile overrides) — only on --advanced
+    cert_path = ""
+    cert_key_path = ""
+    on_connect_cmd = ""
+    on_disconnect_cmd = ""
+    enable_killswitch = False
+    if advanced:
+        print()
+        print("  Advanced options (leave blank to skip)")
+        cert_path = _prompt("  Client certificate (PEM file path)")
+        if cert_path:
+            cert_key_path = _prompt("  Private key (PEM file path)", required=True)
+        on_connect_cmd = _prompt("  on-connect hook (shell command)")
+        on_disconnect_cmd = _prompt("  on-disconnect hook (shell command)")
+        enable_killswitch = _prompt_yes_no("  Enable persistent kill-switch?", default=False)
+
     # 8. Profile name
     profile_name = _prompt("Profile name", default="default", required=True)
 
@@ -265,6 +288,19 @@ def run_setup_wizard() -> int:
     }
     if cred_data:
         profile_data["credentials"] = cred_data
+
+    # Advanced per-profile fields (--advanced only)
+    if advanced:
+        if cert_path:
+            profile_data["cert"] = cert_path
+        if cert_key_path:
+            profile_data["cert_key"] = cert_key_path
+        if on_connect_cmd:
+            profile_data["on_connect"] = on_connect_cmd
+        if on_disconnect_cmd:
+            profile_data["on_disconnect"] = on_disconnect_cmd
+        if enable_killswitch:
+            profile_data["kill_switch"] = {"enabled": True}
 
     cfg.add_profile(profile_name, profile_data)
 

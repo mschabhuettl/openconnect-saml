@@ -30,6 +30,17 @@ STATUS_FAIL = "fail"
 STATUS_SKIP = "skip"
 
 
+def _plain_output() -> bool:
+    """True when the user has asked for color/Unicode output to be suppressed.
+
+    Honored signals: ``NO_COLOR`` env var (any value, per
+    https://no-color.org), and a non-TTY stdout.
+    """
+    if os.environ.get("NO_COLOR") is not None:
+        return True
+    return not sys.stdout.isatty()
+
+
 @dataclass
 class CheckResult:
     name: str
@@ -40,12 +51,21 @@ class CheckResult:
 
     @property
     def symbol(self) -> str:
-        return {
+        plain = _plain_output()
+        unicode_glyphs = {
             STATUS_OK: "✓",
             STATUS_WARN: "!",
             STATUS_FAIL: "✗",
             STATUS_SKIP: "~",
-        }.get(self.status, "?")
+        }
+        ascii_glyphs = {
+            STATUS_OK: "OK",
+            STATUS_WARN: "!!",
+            STATUS_FAIL: "FAIL",
+            STATUS_SKIP: "--",
+        }
+        glyphs = ascii_glyphs if plain else unicode_glyphs
+        return glyphs.get(self.status, "?")
 
 
 # ---------------------------------------------------------------------------
@@ -414,6 +434,24 @@ def _check_saml_endpoint(host: str | None, timeout: float = 8.0) -> CheckResult:
     )
 
 
+def _check_sessions() -> CheckResult:
+    """Surface the number of recorded live sessions."""
+    try:
+        from openconnect_saml import sessions as _sessions
+
+        active = _sessions.list_active()
+    except Exception as exc:  # noqa: BLE001
+        return CheckResult("Active sessions", STATUS_SKIP, f"cannot check ({exc})")
+    if not active:
+        return CheckResult("Active sessions", STATUS_OK, "none")
+    names = ", ".join(s.profile for s in active)
+    return CheckResult(
+        "Active sessions",
+        STATUS_OK,
+        f"{len(active)} ({names})",
+    )
+
+
 def _check_killswitch_state() -> CheckResult:
     """Check whether the kill-switch is currently active (Linux only)."""
     if platform.system() != "Linux":
@@ -485,6 +523,7 @@ def run_all(server: str | None = None) -> list[CheckResult]:
     results.append(_check_server_reachable(server))
     if server:
         results.append(_check_saml_endpoint(server))
+    results.append(_check_sessions())
     results.append(_check_killswitch_state())
     return results
 

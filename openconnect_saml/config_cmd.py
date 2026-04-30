@@ -252,6 +252,46 @@ def _cmd_edit() -> int:
     return subprocess.call([editor, str(path)])  # nosec
 
 
+def _cmd_diff(other_path: str) -> int:
+    """Diff the active config against another config file.
+
+    Both files are loaded and redacted before comparison so secrets never
+    leak into the diff output.
+    """
+    import difflib
+
+    current_path = resolve_config_path()
+    if not current_path.exists():
+        print(f"No active config at {current_path}", file=sys.stderr)
+        return 1
+    other = Path(other_path)
+    if not other.exists():
+        print(f"Other file not found: {other_path}", file=sys.stderr)
+        return 1
+    try:
+        current_data = toml.loads(current_path.read_text())
+        other_data = toml.loads(other.read_text())
+    except Exception as exc:  # noqa: BLE001
+        print(f"Error reading TOML: {exc}", file=sys.stderr)
+        return 1
+
+    current_text = toml.dumps(_redact(current_data)).splitlines(keepends=True)
+    other_text = toml.dumps(_redact(other_data)).splitlines(keepends=True)
+    diff = difflib.unified_diff(
+        current_text,
+        other_text,
+        fromfile=f"current:{current_path}",
+        tofile=f"other:{other}",
+        n=3,
+    )
+    output = "".join(diff)
+    if not output.strip():
+        print("(no differences after redaction)")
+        return 0
+    sys.stdout.write(output)
+    return 0
+
+
 def handle_config_command(args) -> int:
     """Dispatch the ``config`` subcommand."""
     action = getattr(args, "config_action", None)
@@ -263,5 +303,7 @@ def handle_config_command(args) -> int:
         return _cmd_validate()
     if action == "edit":
         return _cmd_edit()
+    if action == "diff":
+        return _cmd_diff(args.other_file)
     print(f"Unknown config action: {action}")
     return 1
