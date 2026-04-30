@@ -109,8 +109,30 @@ def log_event(
         logger.debug("Cannot write to history", error=str(exc))
 
 
-def read_history(limit: int | None = None) -> list[dict]:
-    """Read all history entries (newest last). Returns a list of dicts."""
+def read_history(
+    limit: int | None = None,
+    *,
+    profile: str | None = None,
+    event: str | None = None,
+    since: str | None = None,
+) -> list[dict]:
+    """Read history entries (newest last) with optional filters.
+
+    Parameters
+    ----------
+    limit
+        Keep only the most recent ``limit`` entries (after filtering).
+    profile
+        Match an exact ``profile`` field.
+    event
+        Match an exact ``event`` field (``connected``, ``disconnected``,
+        ``reconnecting``, ``error``).
+    since
+        Drop entries with ``timestamp`` older than this point in time.
+        Accepts an ISO 8601 string (``2026-04-30T12:00:00+00:00``) or
+        a relative phrase like ``"1 day ago"`` / ``"2 hours ago"`` /
+        ``"30 minutes ago"``.
+    """
     path = history_path()
     if not path.exists():
         return []
@@ -129,9 +151,63 @@ def read_history(limit: int | None = None) -> list[dict]:
     except OSError:
         return []
 
+    if profile is not None:
+        entries = [e for e in entries if e.get("profile") == profile]
+    if event is not None:
+        entries = [e for e in entries if e.get("event") == event]
+    if since is not None:
+        cutoff = _parse_since(since)
+        if cutoff is not None:
+            entries = [e for e in entries if _timestamp_after(e.get("timestamp"), cutoff)]
+
     if limit is not None and limit > 0:
         entries = entries[-limit:]
     return entries
+
+
+def _parse_since(value: str) -> datetime | None:
+    """Convert a since= string into a UTC datetime, or None if unparseable."""
+    value = value.strip()
+    # Relative? "<N> <unit>(s) ago" — minutes/hours/days
+    parts = value.split()
+    if len(parts) == 3 and parts[2] == "ago":
+        try:
+            n = int(parts[0])
+        except ValueError:
+            return None
+        unit = parts[1].rstrip("s")
+        delta_seconds = {
+            "second": n,
+            "minute": n * 60,
+            "hour": n * 3600,
+            "day": n * 86400,
+            "week": n * 7 * 86400,
+        }.get(unit)
+        if delta_seconds is None:
+            return None
+        from datetime import timedelta
+
+        return datetime.now(tz=timezone.utc) - timedelta(seconds=delta_seconds)
+    # Otherwise parse ISO 8601 directly
+    try:
+        dt = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _timestamp_after(ts: str | None, cutoff: datetime) -> bool:
+    if not ts:
+        return False
+    try:
+        when = datetime.fromisoformat(ts)
+    except ValueError:
+        return False
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return when >= cutoff
 
 
 def clear_history() -> bool:
@@ -322,7 +398,12 @@ def handle_history_command(args) -> int:
 
     # Default: show
     limit = getattr(args, "limit", None)
-    entries = read_history(limit=limit)
+    entries = read_history(
+        limit=limit,
+        profile=getattr(args, "filter_profile", None),
+        event=getattr(args, "filter_event", None),
+        since=getattr(args, "since", None),
+    )
 
     if not entries:
         print("No history entries yet.")

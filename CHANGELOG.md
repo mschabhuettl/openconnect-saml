@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.0] – 2026-04-30
+
+### Added
+
+- **`history show` filters** — three new flags for slicing the
+  connection log:
+  - `--filter PROFILE` keeps only events for the named profile
+  - `--event {connected,disconnected,reconnecting,error}`
+    keeps only the chosen event type
+  - `--since WHEN` drops entries older than `WHEN` (ISO 8601
+    timestamp, or relative phrase like ``"1 day ago"`` /
+    ``"30 minutes ago"``)
+  Filters compose; `--limit` applies after filtering. Works with
+  the existing `--json` output.
+
+### Notes
+
+- Pure-additive UX release. Existing `history show` invocations
+  behave unchanged when no filter flag is passed.
+
 ## [0.15.0] – 2026-04-30
 
 ### Added

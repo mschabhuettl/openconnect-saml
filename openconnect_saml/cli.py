@@ -536,6 +536,27 @@ def create_argparser():
     history_show = history_sub.add_parser("show", help="Show connection log")
     history_show.add_argument("--limit", "-n", type=int, default=None)
     history_show.add_argument("--json", action="store_true", default=False)
+    history_show.add_argument(
+        "--filter",
+        dest="filter_profile",
+        default=None,
+        metavar="PROFILE",
+        help="Show only entries for this profile",
+    )
+    history_show.add_argument(
+        "--event",
+        dest="filter_event",
+        default=None,
+        choices=["connected", "disconnected", "reconnecting", "error"],
+        help="Show only entries with this event type",
+    )
+    history_show.add_argument(
+        "--since",
+        dest="since",
+        default=None,
+        metavar="WHEN",
+        help="ISO timestamp or relative phrase ('2 hours ago', '1 day ago')",
+    )
     history_sub.add_parser("clear", help="Clear the history log")
     history_sub.add_parser("path", help="Print path to history file")
     history_stats = history_sub.add_parser("stats", help="Show aggregated connection statistics")

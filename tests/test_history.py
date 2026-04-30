@@ -11,6 +11,75 @@ import pytest
 from openconnect_saml import history
 
 
+class TestParseSince:
+    def test_relative_minutes(self):
+        result = history._parse_since("30 minutes ago")
+        assert result is not None
+        delta = (history.datetime.now(tz=history.timezone.utc) - result).total_seconds()
+        # within 5 seconds of 30 minutes
+        assert 30 * 60 - 5 < delta < 30 * 60 + 5
+
+    def test_relative_hours_singular(self):
+        result = history._parse_since("1 hour ago")
+        assert result is not None
+        delta = (history.datetime.now(tz=history.timezone.utc) - result).total_seconds()
+        assert abs(delta - 3600) < 5
+
+    def test_relative_days(self):
+        result = history._parse_since("3 days ago")
+        assert result is not None
+        delta = (history.datetime.now(tz=history.timezone.utc) - result).total_seconds()
+        assert abs(delta - 3 * 86400) < 5
+
+    def test_iso_8601(self):
+        result = history._parse_since("2026-04-30T12:00:00+00:00")
+        assert result is not None
+        assert result.year == 2026
+        assert result.hour == 12
+
+    def test_returns_none_on_garbage(self):
+        assert history._parse_since("yesterday") is None
+        assert history._parse_since("not a date") is None
+        assert history._parse_since("five hours ago") is None
+
+
+class TestReadHistoryFilters:
+    def test_filter_by_profile(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        history.log_event("connected", "vpn1.example.com", profile="work")
+        history.log_event("connected", "vpn2.example.com", profile="lab")
+        history.log_event("disconnected", "vpn1.example.com", profile="work")
+        out = history.read_history(profile="work")
+        assert len(out) == 2
+        assert all(e["profile"] == "work" for e in out)
+
+    def test_filter_by_event(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        history.log_event("connected", "vpn.example.com", profile="work")
+        history.log_event("error", "vpn.example.com", profile="work", message="boom")
+        history.log_event("disconnected", "vpn.example.com", profile="work")
+        out = history.read_history(event="error")
+        assert len(out) == 1
+        assert out[0]["event"] == "error"
+
+    def test_filter_combined(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        history.log_event("connected", "vpn.example.com", profile="work")
+        history.log_event("connected", "vpn.example.com", profile="lab")
+        history.log_event("error", "vpn.example.com", profile="work", message="x")
+        out = history.read_history(profile="work", event="connected")
+        assert len(out) == 1
+        assert out[0]["profile"] == "work"
+        assert out[0]["event"] == "connected"
+
+    def test_since_filter_ignores_old(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        history.log_event("connected", "vpn.example.com", profile="work")
+        # since=now-1s should still include the just-logged entry
+        out = history.read_history(since="1 minute ago")
+        assert len(out) == 1
+
+
 class TestStats:
     def test_compute_stats_empty(self):
         s = history.compute_stats([])
