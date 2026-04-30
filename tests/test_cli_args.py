@@ -152,6 +152,76 @@ class TestSessionsSubcommand:
         assert args.json is True
 
 
+class TestQuietFlag:
+    def test_quiet_short(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com", "-q"])
+        assert args.quiet is True
+
+    def test_quiet_long(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com", "--quiet"])
+        assert args.quiet is True
+
+    def test_quiet_default(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com"])
+        assert args.quiet is False
+
+    def test_quiet_main_parser(self, main_parser):
+        args = main_parser.parse_args(["--quiet", "status"])
+        assert args.quiet is True
+
+    def test_apply_quiet_flag_raises_log_level(self):
+        from types import SimpleNamespace
+
+        from openconnect_saml.cli import LogLevel, _apply_quiet_flag
+
+        args = SimpleNamespace(quiet=True, log_level=LogLevel.INFO)
+        _apply_quiet_flag(args)
+        assert args.log_level == LogLevel.WARNING
+
+    def test_apply_quiet_keeps_explicit_higher_level(self):
+        from types import SimpleNamespace
+
+        from openconnect_saml.cli import LogLevel, _apply_quiet_flag
+
+        args = SimpleNamespace(quiet=True, log_level=LogLevel.ERROR)
+        _apply_quiet_flag(args)
+        # ERROR is higher than WARNING — quiet shouldn't downgrade it
+        assert args.log_level == LogLevel.ERROR
+
+
+class TestGroupsSubcommand:
+    def test_groups_default(self, main_parser):
+        args = main_parser.parse_args(["groups"])
+        assert args.command == "groups"
+
+    def test_groups_add(self, main_parser):
+        args = main_parser.parse_args(["groups", "add", "work", "vpn-eu", "vpn-us"])
+        assert args.groups_action == "add"
+        assert args.group_name == "work"
+        assert args.members == ["vpn-eu", "vpn-us"]
+
+    def test_groups_connect(self, main_parser):
+        args = main_parser.parse_args(["groups", "connect", "work"])
+        assert args.groups_action == "connect"
+        assert args.group_name == "work"
+
+
+class TestProfilesImportXml:
+    def test_import_xml_subcommand(self, main_parser):
+        args = main_parser.parse_args(["profiles", "import-xml", "/tmp/foo.xml"])
+        assert args.profiles_action == "import-xml"
+        assert args.file == "/tmp/foo.xml"
+        assert args.prefix == ""
+        assert args.force is False
+
+    def test_import_xml_with_prefix_and_force(self, main_parser):
+        args = main_parser.parse_args(
+            ["profiles", "import-xml", "/tmp/x.xml", "--prefix", "cisco-", "--force"]
+        )
+        assert args.prefix == "cisco-"
+        assert args.force is True
+
+
 class TestExportFormatFlag:
     def test_export_format_default_json(self, main_parser):
         args = main_parser.parse_args(["profiles", "export", "work"])

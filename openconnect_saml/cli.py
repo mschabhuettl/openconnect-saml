@@ -278,6 +278,14 @@ def _add_global_args(parser):
         default=None,
         help="Path to config.toml (overrides XDG default and $OPENCONNECT_SAML_CONFIG)",
     )
+    parser.add_argument(
+        "-q",
+        "--quiet",
+        dest="quiet",
+        action="store_true",
+        default=False,
+        help="Suppress informational output; only errors are printed",
+    )
 
 
 def create_argparser():
@@ -440,7 +448,16 @@ def create_argparser():
     # completion
     completion_parser = subparsers.add_parser("completion", help="Generate shell completions")
     completion_parser.add_argument(
-        "shell_type", choices=["bash", "zsh", "fish", "install", "_profiles"]
+        "shell_type",
+        choices=[
+            "bash",
+            "zsh",
+            "fish",
+            "install",
+            "_profiles",
+            "_groups",
+            "_sessions",
+        ],
     )
 
     # setup
@@ -796,7 +813,13 @@ def _handle_disconnect_command(args):
     if kill(profile):
         print(f"Disconnected '{profile}'.")
         return 0
+    import difflib
+
+    available = [s.profile for s in list_active()]
+    close = difflib.get_close_matches(profile, available, n=3, cutoff=0.6)
     print(f"No active session for profile '{profile}'.")
+    if close:
+        print(f"Did you mean: {', '.join(close)}?")
     return 1
 
 
@@ -846,9 +869,18 @@ def _handle_connect(args, parser):
         cfg = config.load()
         prof = cfg.get_profile(profile_name)
         if not prof:
+            import difflib
+
+            available = [name for name, _ in cfg.list_profiles()]
+            close = difflib.get_close_matches(profile_name, available, n=3, cutoff=0.6)
             print(f"Error: profile '{profile_name}' not found.", file=sys.stderr)
+            if close:
+                print(
+                    f"Did you mean: {', '.join(close)}?",
+                    file=sys.stderr,
+                )
             print("Available profiles:", file=sys.stderr)
-            for name, _ in cfg.list_profiles():
+            for name in available:
                 print(f"  - {name}", file=sys.stderr)
             return 1
         if not args.server:
@@ -920,6 +952,14 @@ def _apply_config_override(args):
         os.environ[CONFIG_ENV_VAR] = config_file
 
 
+def _apply_quiet_flag(args):
+    """``--quiet`` raises the log threshold to WARNING for the duration."""
+    if getattr(args, "quiet", False) and (
+        getattr(args, "log_level", LogLevel.INFO) is None or args.log_level <= LogLevel.INFO
+    ):
+        args.log_level = LogLevel.WARNING
+
+
 def main():
     argv = sys.argv[1:]
 
@@ -935,6 +975,7 @@ def main():
         parser = create_argparser()
         args = parser.parse_args(argv)
         _apply_config_override(args)
+        _apply_quiet_flag(args)
 
         if args.command == "connect":
             return _handle_connect(args, parser)

@@ -19,6 +19,25 @@ def _get_profile_names():
         return []
 
 
+def _get_group_names():
+    """Get list of profile-group names from config for dynamic completion."""
+    try:
+        cfg = config.load()
+        return list(getattr(cfg, "profile_groups", None) or {})
+    except Exception:
+        return []
+
+
+def _get_session_names():
+    """Get list of currently-active session profile names for completion."""
+    try:
+        from openconnect_saml.sessions import list_active
+
+        return [s.profile for s in list_active()]
+    except Exception:
+        return []
+
+
 def _bash_completion():
     """Generate bash completion script."""
     return """# openconnect-saml bash completion
@@ -30,8 +49,9 @@ _openconnect_saml() {
     local cur prev words cword
     _init_completion || return
 
-    local subcommands="connect profiles status completion service"
-    local profiles_actions="list add remove"
+    local subcommands="connect disconnect sessions groups profiles status completion service setup config doctor history killswitch gui tui"
+    local profiles_actions="list add remove rename show export import import-xml migrate"
+    local groups_actions="list add remove connect disconnect"
     local completion_shells="bash zsh fish install"
     local connect_flags="--server --proxy --headless --browser --authgroup --usergroup
         --authenticate --browser-display-mode --on-connect --on-disconnect
@@ -44,6 +64,10 @@ _openconnect_saml() {
     local profile_names
     profile_names=$(openconnect-saml completion _profiles 2>/dev/null || echo "")
 
+    local session_names group_names
+    session_names=$(openconnect-saml completion _sessions 2>/dev/null || echo "")
+    group_names=$(openconnect-saml completion _groups 2>/dev/null || echo "")
+
     case "${words[1]}" in
         connect)
             if [[ ${cword} -eq 2 ]]; then
@@ -52,25 +76,56 @@ _openconnect_saml() {
                 COMPREPLY=( $(compgen -W "${connect_flags}" -- "${cur}") )
             fi
             return ;;
+        disconnect)
+            COMPREPLY=( $(compgen -W "${session_names} --all" -- "${cur}") )
+            return ;;
+        sessions)
+            COMPREPLY=( $(compgen -W "list --json" -- "${cur}") )
+            return ;;
+        groups)
+            if [[ ${cword} -eq 2 ]]; then
+                COMPREPLY=( $(compgen -W "${groups_actions}" -- "${cur}") )
+            elif [[ ${cword} -eq 3 ]]; then
+                case "${words[2]}" in
+                    remove|connect|disconnect)
+                        COMPREPLY=( $(compgen -W "${group_names}" -- "${cur}") )
+                        ;;
+                    add)
+                        COMPREPLY=( $(compgen -W "${profile_names}" -- "${cur}") )
+                        ;;
+                esac
+            else
+                COMPREPLY=( $(compgen -W "${profile_names}" -- "${cur}") )
+            fi
+            return ;;
         profiles)
             if [[ ${cword} -eq 2 ]]; then
                 COMPREPLY=( $(compgen -W "${profiles_actions}" -- "${cur}") )
             elif [[ ${cword} -eq 3 ]]; then
                 case "${words[2]}" in
-                    remove)
+                    remove|rename|show|export)
                         COMPREPLY=( $(compgen -W "${profile_names}" -- "${cur}") )
                         ;;
                 esac
             fi
             return ;;
         status)
-            COMPREPLY=( $(compgen -W "--watch -w" -- "${cur}") )
+            COMPREPLY=( $(compgen -W "--watch -w --json" -- "${cur}") )
             return ;;
         completion)
             COMPREPLY=( $(compgen -W "${completion_shells}" -- "${cur}") )
             return ;;
         service)
             COMPREPLY=( $(compgen -W "install uninstall start stop status logs" -- "${cur}") )
+            return ;;
+        history)
+            COMPREPLY=( $(compgen -W "show stats clear path" -- "${cur}") )
+            return ;;
+        killswitch)
+            COMPREPLY=( $(compgen -W "enable disable status" -- "${cur}") )
+            return ;;
+        config)
+            COMPREPLY=( $(compgen -W "path show validate edit" -- "${cur}") )
             return ;;
     esac
 
@@ -274,8 +329,17 @@ def handle_completion_command(args):
 
     # Hidden subcommand for dynamic profile completion
     if shell_type == "_profiles":
-        names = _get_profile_names()
-        for name in names:
+        for name in _get_profile_names():
+            print(name)
+        return 0
+
+    if shell_type == "_groups":
+        for name in _get_group_names():
+            print(name)
+        return 0
+
+    if shell_type == "_sessions":
+        for name in _get_session_names():
             print(name)
         return 0
 

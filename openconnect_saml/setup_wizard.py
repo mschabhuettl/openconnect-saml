@@ -70,6 +70,75 @@ def _prompt_yes_no(message: str, default: bool = False) -> bool:
     return value in ("y", "yes", "ja", "j")
 
 
+def _scan_anyconnect_xml_dirs() -> list[str]:
+    """Look for Cisco AnyConnect ``.xml`` profile files in the standard
+    locations. Returns a list of absolute paths.
+    """
+    from pathlib import Path
+
+    candidates = [
+        "/opt/cisco/anyconnect/profile",
+        "/opt/cisco/secureclient/anyconnect/profile",
+        str(Path.home() / ".cisco/profile"),
+    ]
+    found: list[str] = []
+    for d in candidates:
+        p = Path(d)
+        if p.is_dir():
+            found.extend(str(x) for x in sorted(p.glob("*.xml")))
+    return found
+
+
+def _maybe_offer_xml_import() -> bool:
+    """If a Cisco AnyConnect profile dir exists, offer to import it.
+
+    Returns True if the user chose to import (and the wizard should exit).
+    """
+    files = _scan_anyconnect_xml_dirs()
+    if not files:
+        return False
+    print()
+    print("Found existing AnyConnect XML profile(s):")
+    for f in files:
+        print(f"  • {f}")
+    print()
+    if not _prompt_yes_no("Import these into openconnect-saml profiles?", default=True):
+        return False
+
+    from openconnect_saml import config as _config
+    from openconnect_saml.profile import _get_profiles_from_one_file
+
+    cfg = _config.load()
+    imported = 0
+    for path_str in files:
+        from pathlib import Path as _Path
+
+        try:
+            host_profiles = _get_profiles_from_one_file(_Path(path_str))
+        except Exception as exc:  # noqa: BLE001
+            print(f"  ! could not parse {path_str}: {exc}")
+            continue
+        for hp in host_profiles:
+            raw = (hp.name or hp.address or "").strip()
+            if not raw:
+                continue
+            key = raw.replace(" ", "_")
+            if key in cfg.profiles:
+                continue
+            cfg.add_profile(
+                key,
+                {"server": hp.address, "user_group": hp.user_group or "", "name": raw},
+            )
+            print(f"  ✓ imported '{key}' → {hp.address}")
+            imported += 1
+    if imported:
+        _config.save(cfg)
+        print(f"\n✅ Imported {imported} profile(s).")
+        return True
+    print("Nothing new to import.")
+    return False
+
+
 def run_setup_wizard() -> int:
     """Run the interactive setup wizard.
 
@@ -82,6 +151,12 @@ def run_setup_wizard() -> int:
     print("🔧 openconnect-saml Setup Wizard")
     print("=" * 40)
     print()
+
+    if _maybe_offer_xml_import():
+        # Imported — that's a sufficient setup; remind user how to connect.
+        print()
+        print("Connect with: openconnect-saml connect <profile-name>")
+        return 0
 
     # 1. Server URL
     server = _prompt("VPN server URL (e.g. vpn.example.com)", required=True)

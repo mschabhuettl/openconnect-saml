@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] – 2026-04-30
+
+### Added
+
+- **`-q` / `--quiet` global flag** — raises the log threshold to
+  `WARNING` for the duration of an invocation. Suppresses
+  informational output without forcing the user to remember
+  `--log-level WARNING`. Explicit `--log-level ERROR` still wins.
+- **"Did you mean…?" suggestions** — when `connect <profile>` or
+  `disconnect <profile>` cannot find the requested name,
+  Python's `difflib.get_close_matches` surfaces the three most
+  similar candidates so typos are immediately fixable.
+- **Setup wizard XML auto-discovery** — at startup, `setup` scans
+  `/opt/cisco/anyconnect/profile`,
+  `/opt/cisco/secureclient/anyconnect/profile`, and `~/.cisco/profile`
+  for `.xml` profiles. If any are found, it offers to bulk-import
+  them — same logic as `profiles import-xml` but pre-applied so new
+  users don't have to know about that subcommand.
+- **Shell-completion coverage** — the `bash` script now completes
+  `disconnect`, `sessions`, `groups`, `history`, `killswitch`, and
+  `config` subcommands and their actions / arguments. New hidden
+  helpers `completion _groups` / `_sessions` feed dynamic name
+  lists into bash / zsh / fish.
+
+### Notes
+
+- Pure-additive UX release. No new runtime dependencies, no
+  behaviour changes for users not opting in to the new flags.
+
 ## [0.12.0] – 2026-04-30
 
 ### Added
