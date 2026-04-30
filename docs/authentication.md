@@ -171,3 +171,42 @@ on the backend.
 | Don't ask for TOTP | `--no-totp` *or* `--totp-source none` |
 | Don't ask for password | Pre-populate the keyring or set `password` in the env-bound credential helper |
 | Reset everything | `--reset-credentials` |
+| Auth-only run (print cookie, exit) | `--auth-only` (alias for `--authenticate shell`) |
+
+`--auth-only` is the most common use of `--authenticate` — it auths
+the user, prints the cookie + cert hash on stdout, and exits without
+spawning openconnect. Useful for CI / scripts:
+
+```bash
+eval "$(openconnect-saml --server vpn.example.com --user me --auth-only)"
+echo "$COOKIE"
+```
+
+For the JSON variant, use the original `--authenticate json` form.
+
+## Client certificates
+
+For VPNs that require a client certificate in addition to (or instead
+of) SAML authentication:
+
+```bash
+openconnect-saml --server vpn.example.com \
+  --cert ~/certs/work.pem \
+  --cert-key ~/certs/work.key
+```
+
+Both paths support `~` tilde expansion. Internally the values are
+forwarded to openconnect as `--certificate` / `--sslkey`.
+
+Per-profile equivalent:
+
+```toml
+[profiles.work]
+server = "vpn.company.com"
+cert = "~/certs/work.pem"
+cert_key = "~/certs/work.key"
+```
+
+Resolution order: CLI flag > per-profile field. If you have multiple
+VPNs each with its own client cert, the per-profile fields are the
+clean way to manage that.

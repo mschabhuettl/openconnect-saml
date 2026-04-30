@@ -15,12 +15,43 @@ Easiest way to create the first profile:
 
 ```bash
 openconnect-saml setup
+openconnect-saml setup --advanced     # extra prompts for cert / hooks / kill-switch
 ```
 
 Asks for: server URL, username, TOTP source (`local` / `2fauth` /
 `bitwarden` / `1password` / `pass` / `none`), provider details if
 applicable, browser backend, auto-reconnect, notifications, profile
 name. Saves a profile and optionally sets it as the default.
+
+`--advanced` adds a second pass of prompts for:
+
+- Client certificate path + private key (per-profile `cert` /
+  `cert_key`)
+- `on_connect` / `on_disconnect` shell hook commands
+- A boolean to enable per-profile kill-switch
+
+The wizard also auto-discovers Cisco AnyConnect ``.xml`` profile
+files at the standard locations (`/opt/cisco/anyconnect/profile`,
+`/opt/cisco/secureclient/anyconnect/profile`, `~/.cisco/profile`)
+and offers to bulk-import them on first run.
+
+## Schema version
+
+Configs carry a `schema_version` integer (currently `2` since v0.20.0).
+Older configs without the field are treated as v1; the
+``profiles migrate`` subcommand bumps them on demand:
+
+```bash
+openconnect-saml profiles migrate           # dry-run
+openconnect-saml profiles migrate --apply
+```
+
+Current registered migrations:
+
+- Lift legacy `[default_profile]` into `[profiles.default]`
+- Drop unused `[2fauth]` / `[bitwarden]` / `[1password]` / `[pass]`
+  sections
+- Bump `schema_version` to the latest value
 
 ## TOML structure
 
@@ -108,7 +139,7 @@ Default rules cover Azure AD, Microsoft Account, and most Cisco IdPs.
 
 ## `config` subcommand
 
-Inspect, validate, and edit the active config:
+Inspect, validate, edit, diff, and merge config files:
 
 ```bash
 openconnect-saml config path                # print resolved file path
@@ -116,6 +147,9 @@ openconnect-saml config show                # TOML, secrets redacted
 openconnect-saml config show --json
 openconnect-saml config validate            # schema + semantic checks
 openconnect-saml config edit                # opens $EDITOR
+openconnect-saml config diff OTHER.toml     # redacted unified diff
+openconnect-saml config import OTHER.toml   # merge another config in
+openconnect-saml config import OTHER.toml --force   # overwrite conflicts
 ```
 
 `validate` catches:
@@ -127,6 +161,21 @@ openconnect-saml config edit                # opens $EDITOR
   sections referenced by a profile's `totp_source`
 - Invalid CIDRs in `routes` / `no_routes`
 - Overly-permissive file modes (anything other than `0600`)
+- TOTP-provider binaries missing from `$PATH` (warns when a profile
+  uses `1password` / `bitwarden` / `pass` but the corresponding
+  `op` / `bw` / `pass` CLI isn't installed)
+
+### diff vs. import
+
+`config diff` produces a redacted unified diff against another TOML
+file. Both sides go through the same redaction the `show` command
+uses, so the output is safe to paste in bug reports / Slack.
+
+`config import` deep-merges another TOML into the active config:
+
+- Existing keys win by default — your overrides are safe.
+- `--force` lets the incoming file replace overlapping keys.
+- Dicts merge recursively. Lists / scalars are replaced wholesale.
 
 ## Overriding the config path
 

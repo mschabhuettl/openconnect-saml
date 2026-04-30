@@ -117,6 +117,18 @@ exist.
 |  24  | pass TOTP config missing |
 |  130 | Interrupted (Ctrl-C) |
 
+## Version check
+
+```bash
+openconnect-saml --version           # just print the installed version
+openconnect-saml --version --check   # also fetch the latest from PyPI
+```
+
+The `--check` form makes a single HTTPS request to PyPI's JSON
+endpoint with a 3-second timeout. Failure is silent — offline use
+still gets the local version printed. When a newer release is
+available it prints an upgrade hint.
+
 ## Reporting bugs
 
 Please include:

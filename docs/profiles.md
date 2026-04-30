@@ -4,13 +4,15 @@ Save named VPN configurations and switch between them. Profiles live in
 the same TOML config file under `[profiles.<name>]` and are managed via
 the `profiles` subcommand.
 
-## Add / remove / rename
+## Add / copy / remove / rename / set
 
 ```bash
 openconnect-saml profiles add work \
   --server vpn.company.com \
   --user user@company.com \
-  --user-group employees
+  --user-group employees \
+  --browser chrome \
+  --notify
 
 openconnect-saml profiles add lab \
   --server lab-vpn.company.com \
@@ -19,9 +21,31 @@ openconnect-saml profiles add lab \
 openconnect-saml profiles list
 openconnect-saml profiles show work          # human-readable, redacted
 openconnect-saml profiles show work --json
+
+# Duplicate a profile (independent copy; mutations don't propagate)
+openconnect-saml profiles copy work work-test
+openconnect-saml profiles copy work staging --force   # overwrite if exists
+
+# Programmatic single-field edits — useful in CI/automation where
+# `config edit` (which spawns $EDITOR) isn't practical.
+openconnect-saml profiles set work browser chrome
+openconnect-saml profiles set work notify true
+openconnect-saml profiles set work cert ~/certs/work.pem
+openconnect-saml profiles set work browser ""        # clear an override
+
 openconnect-saml profiles rename work office
 openconnect-saml profiles remove lab
 ```
+
+`profiles set FIELD VALUE` accepts: `server`, `user_group`, `name`,
+`browser`, `notify`, `on_connect`, `on_disconnect`, `cert`, `cert_key`,
+`username`, `totp_source`. Booleans accept
+`true | false | yes | no | 1 | 0 | on | off`. An empty string clears
+an optional / per-profile-override field.
+
+When stdin isn't a TTY (CI / scripts), `profiles add` requires
+`--server` explicitly and skips the interactive `username` /
+`user_group` prompts.
 
 ## Connect to a profile
 

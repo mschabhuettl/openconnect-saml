@@ -5,6 +5,53 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.22.0] – 2026-04-30
+
+### Fixed
+
+- **`--no-cert-check` had no effect on most Linux distros (#19 redux)** —
+  setting `session.verify = False` is silently overridden by the
+  `REQUESTS_CA_BUNDLE` / `SSL_CERT_FILE` env vars (which most distros
+  set by default). Now we also flip `session.trust_env = False` when
+  the user opts out of cert verification, so the flag actually works.
+  Affects both the SAML auth session and the headless authenticator.
+- **`profiles add` aborted in non-interactive runs** — the wizard
+  prompted for `username` / `user_group` whenever they weren't on the
+  command line, even with no controlling TTY. The prompt would receive
+  EOF and exit. Now we only prompt when stdin is a TTY, and require
+  `--server` explicitly otherwise. Restores CI / scripting use.
+- **`openconnect-saml --quiet status` (and other global-flag-then-
+  subcommand combinations) misclassified as legacy mode** — argparse
+  ran the legacy connect dispatcher and bailed on missing `--server`.
+  The legacy detector now skips past `--config FILE`, `--quiet`,
+  `--check` before deciding.
+
+### Added
+
+- **End-to-end integration test harness** (`tests/integration/`) — an
+  in-process mock Cisco AnyConnect gateway + SAML IdP on a single
+  HTTPS origin (self-signed cert generated at runtime) lets the test
+  suite drive the real CLI through the full auth flow. 38 new
+  integration tests (706 total) covering auth → cookie roundtrip,
+  profile lifecycle, sessions / disconnect / groups / history /
+  doctor / migrate, and `--no-cert-check` against a real self-signed
+  cert. The three bugs above were all surfaced by this harness.
+- **Documentation completion pass** — every CLI surface added in
+  v0.8.2–v0.21.0 is now documented under `docs/` (cli-reference,
+  operations, networking, profiles, configuration, authentication,
+  diagnostics). Previously-undocumented: `profiles copy`,
+  `profiles set`, `--no-cert-check`, `--allowed-hosts`, `--on-error`,
+  `--auth-only`, `--background`, `--wait`, `config import`,
+  `config diff`, `groups rename`, `setup --advanced`,
+  `--version --check`, `service install --user`, `run`,
+  `history export`, `--cert` / `--cert-key`, `schema_version`.
+
+### Notes
+
+- This release is bug-fix-only on the runtime side; behaviour for
+  previously-working invocations is unchanged. The fixes restore
+  flags that were broken for at least one common scenario each.
+
 ## [0.21.0] – 2026-04-30
 
 ### Fixed

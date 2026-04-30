@@ -123,3 +123,55 @@ openconnect-saml --server vpn.example.com --ssl-legacy
 ```
 
 This sets `OP_LEGACY_SERVER_CONNECT` on the SSL context (Python ≥ 3.12).
+
+## Self-signed certificates: `--no-cert-check`
+
+Internal corporate gateways often use a private CA or self-signed
+certificate that's not in the system trust store. Use
+`--no-cert-check` to bypass TLS verification on the SAML auth
+phase *and* tell openconnect itself to skip the system trust store:
+
+```bash
+openconnect-saml --server vpn.internal.example.com --no-cert-check
+```
+
+What it does:
+
+- Sets `session.verify = False` and `session.trust_env = False` on
+  the requests session — this is **important** because
+  `REQUESTS_CA_BUNDLE` / `SSL_CERT_FILE` env vars (set by default on
+  most Linux distros) would otherwise silently re-enable verification.
+- Adds `--no-system-trust` to the openconnect command line.
+- Keeps `--servercert <hash>` pinning intact — the leaf certificate's
+  hash from the SAML auth response is still enforced. This binds the
+  trust to the actual cert, not the trust chain.
+
+> ⚠️ Only use this on networks you trust. For public-internet VPNs
+> always rely on a properly trusted certificate.
+
+## Headless redirect-host whitelist: `--allowed-hosts`
+
+When using `--headless` mode for unattended authentication, the
+`requests` session follows up to 20 redirects. To prevent a
+compromised gateway from POSTing credentials to an attacker-controlled
+host, you can pin the allowed hostnames:
+
+```bash
+openconnect-saml --headless \
+  --server vpn.example.com \
+  --allowed-hosts 'login.microsoftonline.com,*.duosecurity.com'
+```
+
+Rules:
+
+- Comma-separated list. Whitespace is trimmed.
+- Exact hostname match: `idp.example.com` matches only that.
+- Glob with `*.suffix` matches any subdomain: `*.duosecurity.com`
+  matches `api-1a.duosecurity.com` but **not** `duosecurity.com` itself.
+- The gateway and the gateway-supplied login URL hosts are
+  auto-allowed (the gateway is authoritative for those redirects).
+- A redirect off the whitelist raises `HeadlessAuthError` and exits
+  fail-closed.
+
+Default (flag unset): no host enforcement, behaviour identical to
+v0.20.0 and earlier.
