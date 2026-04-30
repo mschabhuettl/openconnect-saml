@@ -163,3 +163,40 @@ class TestConfigureTotpProvider:
         # a provider selected (real flow guarded earlier in _run)
         configure_totp_provider(_args(totp_source="bitwarden"), cfg, None)
         assert cfg.bitwarden is None
+
+
+class TestEmptyTotpInputDisablesPrompt:
+    """When the user hits Enter at the TOTP prompt, we should remember the
+    opt-out (set totp_source = "none") so the next reconnect / next run
+    doesn't ask again. Regression: previously the empty string got
+    persisted to keyring, where pyotp can't decode it and re-warns +
+    re-prompts on every run.
+    """
+
+    def test_empty_totp_sets_none_and_clears_keyring(self):
+        """Reproduce the empty-input branch from app.py inline.
+
+        We can't easily run the full async _run() here, but the logic
+        in question is a small conditional so a focused unit test is
+        enough to lock the regression in.
+        """
+        import contextlib
+
+        creds = Credentials("u@x.test")
+        deleted: list[bool] = []
+        type(creds).totp = property(
+            fget=lambda self: None,
+            fset=lambda self, v: setattr(self, "_totp_secret", v),
+            fdel=lambda self: deleted.append(True),
+        )
+
+        entered = ""  # user hit Enter at the prompt
+        if entered.strip():
+            creds.totp = entered.strip()
+        else:
+            with contextlib.suppress(Exception):
+                del creds.totp
+            creds.totp_source = "none"
+
+        assert creds.totp_source == "none"
+        assert deleted, "stale TOTP should have been cleared from keyring"

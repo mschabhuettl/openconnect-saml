@@ -9,13 +9,26 @@ from openconnect_saml.cli import _recover_connect_options_from_remainder, create
 
 
 def test_connect_profile_recovers_browser_after_profile_name():
+    """`connect work --browser chrome -- --passwd-on-stdin` parses
+    as expected: profile_name + known browser flag + opaque openconnect
+    args after the ``--`` separator. parse_known_args (replacing the old
+    REMAINDER positional) routes unknown flags to ``unknown``, and our
+    main() strips the leading ``--``.
+    """
     parser = create_argparser()
-    args = parser.parse_args(["connect", "work", "--browser", "chrome", "--", "--passwd-on-stdin"])
-
-    _recover_connect_options_from_remainder(args)
+    args, unknown = parser.parse_known_args(
+        ["connect", "work", "--browser", "chrome", "--", "--passwd-on-stdin"]
+    )
+    if unknown and unknown[0] == "--":
+        unknown = unknown[1:]
 
     assert args.profile_name == "work"
     assert args.browser == "chrome"
+    assert unknown == ["--passwd-on-stdin"]
+    # _recover_connect_options_from_remainder is now a no-op for new args
+    # but exercises stay safe for back-compat callers (e.g. tests).
+    args.openconnect_args = unknown
+    _recover_connect_options_from_remainder(args)
     assert args.openconnect_args == ["--passwd-on-stdin"]
 
 

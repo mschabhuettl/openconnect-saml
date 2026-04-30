@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.22.1] – 2026-04-30
+
+### Fixed
+
+- **`connect PROFILE --reconnect` (and other known flags) was forwarded
+  to `openconnect`** — the `openconnect_args` positional used
+  `argparse.REMAINDER`, which is greedy and swallows known flags placed
+  *after* the profile name. `--reconnect` was prefix-matched as
+  `openconnect --reconnect-timeout`, ate the server URL as its value,
+  and openconnect bailed out with `No server specified`. Replaced with
+  `parse_known_args`, so known flags are parsed and only truly-unknown
+  args (everything after `--`, or anything argparse can't claim) are
+  forwarded. Surfaced by a real-world test against `univpn.uni-graz.at`.
+- **Empty TOTP input caused a forever re-prompt loop** — hitting Enter
+  at the `TOTP secret (leave blank if not required)` prompt stored the
+  empty string in keyring. `pyotp` then logged
+  `Non-base32 digit found` on every reconnect, and the prompt came
+  back. Now an empty answer sets `totp_source = "none"` and clears the
+  stale entry from keyring, so the opt-out is remembered. The keyring
+  side also auto-purges any pre-existing corrupt secret on first read
+  (#143 follow-up).
+- **`openconnect-saml tui` on Arch suggested the wrong install
+  command** — the error said `pip install openconnect-saml[tui]`, but
+  Arch users install `python-rich` from pacman. The hint is now
+  distro-aware (Arch / Debian-Ubuntu / Fedora-RHEL) via `/etc/os-release`
+  and falls back to the pip command otherwise.
+
 ## [0.22.0] – 2026-04-30
 
 ### Fixed

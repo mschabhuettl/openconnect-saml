@@ -124,12 +124,14 @@ def _add_connection_args(parser):
         choices=LogLevel.choices(),
         default=LogLevel.INFO,
     )
-    parser.add_argument(
-        "openconnect_args",
-        help="Arguments passed to openconnect",
-        action=StoreOpenConnectArgs,
-        nargs=argparse.REMAINDER,
-    )
+    # ``openconnect_args`` is no longer a REMAINDER positional — argparse's
+    # REMAINDER greedily eats every flag after the profile name (including
+    # known ones like ``--reconnect``), so ``connect uni --reconnect`` ended
+    # up forwarding ``--reconnect`` to openconnect, which prefix-matched it
+    # to ``--reconnect-timeout`` and consumed the server URL as the value
+    # ("No server specified"). We now collect unknowns via parse_known_args
+    # in main() and store the residue here.
+    parser.set_defaults(openconnect_args=[])
 
     credentials_group = parser.add_argument_group("Credentials for automatic login")
     credentials_group.add_argument(
@@ -1340,7 +1342,13 @@ def main():
 
     if not _is_legacy_invocation(argv):
         parser = create_argparser()
-        args = parser.parse_args(argv)
+        args, unknown = parser.parse_known_args(argv)
+        # Stuff our parser doesn't recognise is forwarded to openconnect
+        # itself (e.g. --no-dtls, --script, --dump-http-traffic). Strip a
+        # leading ``--`` separator if the user used it explicitly.
+        if unknown and unknown[0] == "--":
+            unknown = unknown[1:]
+        args.openconnect_args = list(getattr(args, "openconnect_args", []) or []) + unknown
         if getattr(args, "version", False):
             return _print_version(check=getattr(args, "check", False))
         _apply_config_override(args)
@@ -1383,7 +1391,10 @@ def main():
 
     # Legacy mode: no subcommand
     parser = create_legacy_argparser()
-    args = parser.parse_args(argv)
+    args, unknown = parser.parse_known_args(argv)
+    if unknown and unknown[0] == "--":
+        unknown = unknown[1:]
+    args.openconnect_args = list(getattr(args, "openconnect_args", []) or []) + unknown
     if getattr(args, "version", False):
         return _print_version(check=getattr(args, "check", False))
     _apply_config_override(args)

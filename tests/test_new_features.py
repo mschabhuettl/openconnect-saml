@@ -79,13 +79,16 @@ def test_totp_with_valid_secret():
 
 @patch("openconnect_saml.config.keyring")
 def test_totp_with_corrupt_secret_in_keyring(mock_keyring):
-    """Corrupt TOTP secret from keyring should return None."""
+    """Corrupt TOTP secret from keyring should return None and self-clean."""
     mock_keyring.get_password.return_value = "CORRUPT!!!"
     mock_keyring.errors = MagicMock()
     mock_keyring.errors.KeyringError = Exception
     cred = Credentials("testuser")
     result = cred.totp
     assert result is None
+    # Auto-purge: subsequent reads must not keep returning the corrupt value.
+    # The implementation calls keyring.delete_password to clean up.
+    assert mock_keyring.delete_password.call_count >= 1
 
 
 # --- Invalid response type (#121) ---

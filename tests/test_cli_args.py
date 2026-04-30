@@ -549,9 +549,28 @@ class TestLogLevel:
 
 class TestOpenConnectArgs:
     def test_passthrough_args(self, parser):
-        args = parser.parse_args(["-s", "vpn.example.com", "--", "--protocol", "anyconnect"])
-        assert args.openconnect_args == ["--protocol", "anyconnect"]
+        # parse_known_args collects unknown flags as openconnect passthrough.
+        # main() strips a leading "--" separator before storing.
+        args, unknown = parser.parse_known_args(
+            ["-s", "vpn.example.com", "--", "--protocol", "anyconnect"]
+        )
+        if unknown and unknown[0] == "--":
+            unknown = unknown[1:]
+        assert unknown == ["--protocol", "anyconnect"]
 
     def test_no_passthrough(self, parser):
         args = parser.parse_args(["-s", "vpn.example.com"])
         assert args.openconnect_args == []
+
+    def test_known_flag_not_forwarded(self, parser):
+        # Regression: --reconnect after `connect PROFILE` was being passed
+        # to openconnect via REMAINDER → openconnect prefix-matched it to
+        # --reconnect-timeout and ate the server URL ("No server specified").
+        # parse_known_args now consumes it on our side.
+        args, unknown = parser.parse_known_args(["-s", "vpn.example.com", "--reconnect"])
+        assert args.reconnect is True
+        assert unknown == []
+
+    def test_unknown_flag_goes_through(self, parser):
+        args, unknown = parser.parse_known_args(["-s", "vpn.example.com", "--no-dtls"])
+        assert unknown == ["--no-dtls"]

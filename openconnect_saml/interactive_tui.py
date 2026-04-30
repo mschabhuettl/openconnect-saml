@@ -31,6 +31,56 @@ def _has_rich() -> bool:
         return False
 
 
+def _install_hint(package: str) -> str:
+    """Render a distro-aware installation hint for an optional dep.
+
+    Maps the upstream PyPI package name to the corresponding distro
+    package and points the user at the right install command. The
+    pip variant always works as a fallback.
+    """
+    pip_map = {"rich": "openconnect-saml[tui]"}
+    distro_map = {
+        "arch": {"rich": "python-rich"},
+        "debian": {"rich": "python3-rich"},
+        "fedora": {"rich": "python3-rich"},
+    }
+
+    pip_pkg = pip_map.get(package, package)
+    lines = [f"  pip install '{pip_pkg}'"]
+    distro = _detect_distro()
+    if distro and package in distro_map.get(distro, {}):
+        sys_pkg = distro_map[distro][package]
+        if distro == "arch":
+            lines.insert(0, f"  sudo pacman -S {sys_pkg}")
+        elif distro == "debian":
+            lines.insert(0, f"  sudo apt install {sys_pkg}")
+        elif distro == "fedora":
+            lines.insert(0, f"  sudo dnf install {sys_pkg}")
+    return "Install with one of:\n" + "\n".join(lines)
+
+
+def _detect_distro() -> str | None:
+    """Return ``arch`` / ``debian`` / ``fedora`` or None on best-effort basis."""
+    import os as _os
+
+    if _os.path.exists("/etc/arch-release"):
+        return "arch"
+    try:
+        with open("/etc/os-release") as f:
+            for line in f:
+                if line.startswith("ID="):
+                    val = line.split("=", 1)[1].strip().strip('"').lower()
+                    if val in ("arch", "manjaro", "endeavouros", "cachyos"):
+                        return "arch"
+                    if val in ("debian", "ubuntu", "linuxmint", "pop"):
+                        return "debian"
+                    if val in ("fedora", "rhel", "centos", "rocky", "almalinux"):
+                        return "fedora"
+    except OSError:
+        pass
+    return None
+
+
 def _read_key(timeout: float = 0.5) -> str | None:
     """Non-blocking single-key read from stdin, or None on timeout.
 
@@ -216,10 +266,11 @@ class InteractiveTUI:
     def run(self) -> int:
         if not _has_rich():
             print(
-                "Error: `rich` is required for the interactive TUI. "
-                "Install with: pip install 'openconnect-saml[tui]'",
+                "Error: `rich` is required for the interactive TUI.",
                 file=sys.stderr,
             )
+            for line in _install_hint("rich").splitlines():
+                print(line, file=sys.stderr)
             return 1
         if not sys.stdin.isatty() or not sys.stdout.isatty():
             print("Error: TUI needs an interactive terminal.", file=sys.stderr)

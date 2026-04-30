@@ -557,15 +557,32 @@ async def _run(args, cfg):
     totp_source = resolve_totp_source(args, credentials)
 
     # Catch-all: if no provider was configured and no TOTP secret is on file,
-    # ask for one (unless the user explicitly opted out via "none").
+    # ask for one (unless the user explicitly opted out via "none"). When the
+    # user responds with empty input, treat that as opting out so we don't
+    # prompt again on every reconnect / next run (#TOTP-loop).
     if (
         credentials
         and totp_source not in ("none", "bitwarden", "1password", "pass", "2fauth")
         and not credentials.totp
     ):
-        credentials.totp = getpass.getpass(
+        entered = getpass.getpass(
             prompt=f"TOTP secret (leave blank if not required) ({args.user}): "
         )
+        if entered.strip():
+            credentials.totp = entered.strip()
+        else:
+            # Persist the opt-out so subsequent runs / reconnect cycles don't
+            # re-ask. Also clear any stale / corrupt secret previously stored
+            # in the keyring.
+            logger.info(
+                "Empty TOTP entered — disabling TOTP prompts for this account "
+                "(set --totp-source local manually to re-enable)."
+            )
+            try:
+                del credentials.totp
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("Could not clear stale TOTP from keyring", error=str(exc))
+            credentials.totp_source = "none"
         cfg.credentials = credentials
 
     if cfg.default_profile and not (args.use_profile_selector or args.server):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import binascii
+import contextlib
 import enum
 import os
 from collections.abc import Callable
@@ -252,17 +253,22 @@ class Credentials(ConfigNode):
                 try:
                     return pyotp.TOTP(totpsecret).now()
                 except (binascii.Error, ValueError) as exc:
+                    # Corrupt / non-base32 secret — auto-purge so subsequent
+                    # runs don't keep re-warning + re-prompting (the most
+                    # common cause is a previous empty-input prompt that
+                    # stored "" and now fails to decode).
                     logger.warning(
-                        "Corrupt TOTP secret in keyring (#143), ignoring. "
-                        "Use --reset-credentials to clear it or re-enter when prompted.",
+                        "Corrupt TOTP secret in keyring (#143), purging it. "
+                        "If you actually use TOTP, re-enter when next prompted.",
                         error=str(exc),
                     )
+                    with contextlib.suppress(keyring.errors.KeyringError):
+                        keyring.delete_password(APP_NAME, "totp/" + self.username)
                     return None
                 except Exception:
-                    logger.warning(
-                        "Invalid TOTP secret in keyring, ignoring. "
-                        "Use --reset-credentials to clear it."
-                    )
+                    logger.warning("Invalid TOTP secret in keyring, purging it.")
+                    with contextlib.suppress(keyring.errors.KeyringError):
+                        keyring.delete_password(APP_NAME, "totp/" + self.username)
                     return None
             return None
         except keyring.errors.KeyringError:
