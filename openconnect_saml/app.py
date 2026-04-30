@@ -165,6 +165,12 @@ def run(args):
             )
         )
 
+    cert = getattr(args, "cert", None)
+    cert_key = getattr(args, "cert_key", None)
+    if profile is not None:
+        cert = cert or profile.cert
+        cert_key = cert_key or profile.cert_key
+
     try:
         rc = run_openconnect(
             auth_response,
@@ -180,6 +186,8 @@ def run(args):
             useragent=getattr(args, "useragent", None),
             detach=detach,
             on_pid=_record_pid,
+            cert=cert,
+            cert_key=cert_key,
         )
         return rc
     except KeyboardInterrupt:
@@ -688,6 +696,8 @@ def run_openconnect(
     useragent=None,
     detach=False,
     on_pid=None,
+    cert=None,
+    cert_key=None,
 ):
     """Spawn the openconnect process.
 
@@ -739,6 +749,10 @@ def run_openconnect(
         openconnect_args.extend(["--proxy", proxy])
     if csd_wrapper:
         openconnect_args.extend(["--csd-wrapper", csd_wrapper])
+    if cert:
+        openconnect_args.extend(["--certificate", os.path.expanduser(cert)])
+    if cert_key:
+        openconnect_args.extend(["--sslkey", os.path.expanduser(cert_key)])
 
     if routes:
         for route in routes:

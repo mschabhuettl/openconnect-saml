@@ -82,6 +82,33 @@ class TestProfileHooks:
         assert prof.on_disconnect == "/usr/local/bin/route-cleanup"
 
 
+class TestProfileCert:
+    def test_default_none(self):
+        prof = ProfileConfig(server="vpn.example.com")
+        assert prof.cert is None
+        assert prof.cert_key is None
+
+    def test_round_trip(self):
+        prof = ProfileConfig.from_dict(
+            {
+                "server": "vpn.example.com",
+                "cert": "~/certs/vpn.pem",
+                "cert_key": "~/certs/vpn.key",
+            }
+        )
+        assert prof.cert == "~/certs/vpn.pem"
+        assert prof.cert_key == "~/certs/vpn.key"
+        d = prof.as_dict()
+        assert d["cert"] == "~/certs/vpn.pem"
+        assert d["cert_key"] == "~/certs/vpn.key"
+
+    def test_omitted_when_none(self):
+        prof = ProfileConfig(server="vpn.example.com")
+        d = prof.as_dict()
+        assert "cert" not in d
+        assert "cert_key" not in d
+
+
 class TestProfileKillSwitch:
     def test_default_none(self):
         prof = ProfileConfig(server="vpn.example.com")

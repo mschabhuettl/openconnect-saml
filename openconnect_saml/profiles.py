@@ -24,6 +24,12 @@ from pathlib import Path
 from openconnect_saml import config
 
 
+def _prompt_for_decrypt_passphrase() -> str:
+    import getpass
+
+    return getpass.getpass("Backup passphrase: ")
+
+
 def handle_profiles_command(args):
     """Dispatch profiles subcommands."""
     action = getattr(args, "profiles_action", None)
@@ -513,7 +519,7 @@ def _profile_to_nmconnection(name: str, prof) -> str:
 
 
 def _export_profile(args):
-    """Export one (or all) profiles to JSON or .nmconnection file(s)."""
+    """Export one (or all) profiles to JSON, encrypted, or .nmconnection file(s)."""
     cfg = config.load()
     name = getattr(args, "profile_name", None)
     target = getattr(args, "file", None)
@@ -534,6 +540,11 @@ def _export_profile(args):
             "version": 1,
             "profiles": {n: _profile_to_exportable(n, p) for n, p in cfg.list_profiles()},
         }
+
+    if fmt == "encrypted":
+        from openconnect_saml.encrypted_backup import export_encrypted
+
+        return export_encrypted(payload, Path(target) if target and target != "-" else None)
 
     text = json.dumps(payload, indent=2, default=str)
     if target and target != "-":
@@ -615,7 +626,12 @@ def _export_nmconnection(cfg, name, target):
 
 
 def _import_profile(args):
-    """Import one or more profiles from a JSON file (or stdin)."""
+    """Import one or more profiles from a JSON file (or stdin).
+
+    The file may be plain JSON or an encrypted backup produced by
+    ``profiles export --format encrypted``. Format detection is
+    automatic via the ``OPENCONNECT_SAML_BACKUP`` magic header.
+    """
     source = getattr(args, "file", None)
     rename_to = getattr(args, "as_name", None)
     overwrite = getattr(args, "force", False)
@@ -628,6 +644,15 @@ def _import_profile(args):
             print(f"Error: file '{path}' not found.", file=sys.stderr)
             return 1
         text = path.read_text()
+
+    if text.startswith("OPENCONNECT_SAML_BACKUP"):
+        from openconnect_saml.encrypted_backup import decrypt
+
+        try:
+            text = decrypt(text.encode("utf-8"), _prompt_for_decrypt_passphrase()).decode("utf-8")
+        except ValueError as exc:
+            print(f"Error: cannot decrypt backup: {exc}", file=sys.stderr)
+            return 1
 
     try:
         payload = json.loads(text)

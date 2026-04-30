@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] – 2026-04-30
+
+### Added
+
+- **Client-certificate authentication** — `--cert FILE` and
+  `--cert-key FILE` flags. Profiles also gain `cert` and `cert_key`
+  fields under `[profiles.<name>]` so each VPN can carry its own
+  client cert. The paths are passed through to openconnect as
+  `--certificate` / `--sslkey`. Tilde expansion happens at use time
+  so `~/certs/work.pem` works as expected.
+- **Encrypted profile backups** — `profiles export --format encrypted`
+  produces a passphrase-protected file (Fernet AES-128-CBC + HMAC,
+  PBKDF2-SHA256 with 480 000 iterations and a per-file random salt).
+  The corresponding `profiles import FILE` autodetects the
+  ``OPENCONNECT_SAML_BACKUP`` magic header and prompts for the
+  passphrase. No new runtime dependency — `cryptography` ships with
+  `keyring`/`secretstorage` on Linux.
+
+### Notes
+
+- Pure-additive release. Existing JSON exports / imports continue to
+  work; encrypted backups are interchangeable with JSON ones — the
+  payload format is identical, only the on-disk representation
+  differs.
+
 ## [0.13.0] – 2026-04-30
 
 ### Added

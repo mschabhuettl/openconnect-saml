@@ -394,6 +394,10 @@ class ProfileConfig(ConfigNode):
     on_connect = attr.ib(default=None, converter=_convert_optional_str)
     on_disconnect = attr.ib(default=None, converter=_convert_optional_str)
     kill_switch = attr.ib(default=None, converter=_convert_killswitch)
+    # Client-cert auth (v0.14.0+). Both files are passed to openconnect
+    # as --certificate / --sslkey — tilde expansion happens at use time.
+    cert = attr.ib(default=None, converter=_convert_optional_str)
+    cert_key = attr.ib(default=None, converter=_convert_optional_str)
 
     @classmethod
     def from_dict(cls, d):
@@ -404,7 +408,15 @@ class ProfileConfig(ConfigNode):
     def as_dict(self):
         d = attr.asdict(self, filter=lambda a, v: a.init)
         # Drop optional overrides that are explicitly None to keep TOML clean
-        for key in ("browser", "notify", "on_connect", "on_disconnect", "kill_switch"):
+        for key in (
+            "browser",
+            "notify",
+            "on_connect",
+            "on_disconnect",
+            "kill_switch",
+            "cert",
+            "cert_key",
+        ):
             if d.get(key) is None:
                 d.pop(key, None)
         return _rename_py_to_toml(d)

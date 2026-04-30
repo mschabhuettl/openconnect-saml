@@ -222,6 +222,27 @@ class TestProfilesImportXml:
         assert args.force is True
 
 
+class TestCertFlags:
+    def test_cert_flag(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com", "--cert", "/etc/ssl/vpn.pem"])
+        assert args.cert == "/etc/ssl/vpn.pem"
+
+    def test_cert_key_flag(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com", "--cert-key", "/etc/ssl/vpn.key"])
+        assert args.cert_key == "/etc/ssl/vpn.key"
+
+    def test_cert_default_none(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com"])
+        assert args.cert is None
+        assert args.cert_key is None
+
+
+class TestExportEncrypted:
+    def test_format_encrypted_accepted(self, main_parser):
+        args = main_parser.parse_args(["profiles", "export", "work", "--format", "encrypted"])
+        assert args.format == "encrypted"
+
+
 class TestExportFormatFlag:
     def test_export_format_default_json(self, main_parser):
         args = main_parser.parse_args(["profiles", "export", "work"])

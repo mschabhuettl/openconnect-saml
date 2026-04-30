@@ -254,6 +254,21 @@ def _add_connection_args(parser):
     connection_group.add_argument(
         "--ssl-legacy", dest="ssl_legacy", action="store_true", default=False
     )
+    cert_group = parser.add_argument_group("Client certificate (optional)")
+    cert_group.add_argument(
+        "--cert",
+        dest="cert",
+        default=None,
+        metavar="FILE",
+        help="Path to a client certificate (PEM) — passed to openconnect as --certificate",
+    )
+    cert_group.add_argument(
+        "--cert-key",
+        dest="cert_key",
+        default=None,
+        metavar="FILE",
+        help="Path to the client cert's private key (PEM) — passed as --sslkey",
+    )
     connection_group.add_argument("--timeout", dest="timeout", type=int, default=None)
     connection_group.add_argument(
         "--no-history",
@@ -356,10 +371,13 @@ def create_argparser():
     export_parser.add_argument(
         "--format",
         "-f",
-        choices=["json", "nmconnection"],
+        choices=["json", "nmconnection", "encrypted"],
         default="json",
-        help="Export format (default: json). 'nmconnection' produces a NetworkManager "
-        "VPN profile compatible with the Ubuntu/GNOME VPN UI.",
+        help=(
+            "Export format (default: json). 'nmconnection' produces a NetworkManager "
+            "VPN profile compatible with the Ubuntu/GNOME VPN UI. 'encrypted' produces "
+            "a passphrase-protected backup (Fernet, PBKDF2-SHA256)."
+        ),
     )
 
     import_parser = profiles_sub.add_parser("import", help="Import profiles from JSON")
