@@ -189,6 +189,7 @@ def run(args):
             cert=cert,
             cert_key=cert_key,
             wait_seconds=getattr(args, "wait_seconds", 0),
+            no_cert_check=getattr(args, "no_cert_check", False),
         )
         return rc
     except KeyboardInterrupt:
@@ -609,6 +610,11 @@ async def _run(args, cfg):
             logger.warning("Invalid --window-size format, using defaults", value=window_size)
 
     ssl_legacy = getattr(args, "ssl_legacy", False)
+    no_cert_check = getattr(args, "no_cert_check", False)
+    allowed_hosts_raw = getattr(args, "allowed_hosts", None)
+    allowed_hosts: list[str] | None = None
+    if allowed_hosts_raw:
+        allowed_hosts = [h.strip() for h in allowed_hosts_raw.split(",") if h.strip()]
 
     auth_response = await authenticate_to(
         selected_profile,
@@ -620,6 +626,8 @@ async def _run(args, cfg):
         timeout=timeout,
         window_width=cfg.window_width,
         window_height=cfg.window_height,
+        verify_tls=not no_cert_check,
+        allowed_hosts=allowed_hosts,
     )
 
     if credentials:
@@ -669,6 +677,8 @@ def authenticate_to(
     timeout=30,
     window_width=800,
     window_height=600,
+    verify_tls=True,
+    allowed_hosts=None,
 ):
     logger.info("Authenticating to VPN endpoint", name=host.name, address=host.address)
     return Authenticator(
@@ -680,6 +690,8 @@ def authenticate_to(
         timeout=timeout,
         window_width=window_width,
         window_height=window_height,
+        verify_tls=verify_tls,
+        allowed_hosts=allowed_hosts,
     ).authenticate(display_mode)
 
 
@@ -727,6 +739,7 @@ def run_openconnect(
     cert=None,
     cert_key=None,
     wait_seconds=0,
+    no_cert_check=False,
 ):
     """Spawn the openconnect process.
 
@@ -782,6 +795,11 @@ def run_openconnect(
         openconnect_args.extend(["--certificate", os.path.expanduser(cert)])
     if cert_key:
         openconnect_args.extend(["--sslkey", os.path.expanduser(cert_key)])
+    if no_cert_check:
+        # Ask openconnect itself to skip cert validation. Note: --servercert
+        # is still pinned via the SAML auth response, which is what we want
+        # for self-signed gateways: the hash binds to the actual certificate.
+        openconnect_args.extend(["--no-system-trust"])
 
     if routes:
         for route in routes:

@@ -84,16 +84,12 @@ class TestExport:
     def test_export_csv_to_file(self, tmp_path, monkeypatch):
         monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
         history.log_event("connected", "vpn.example.com", profile="work")
-        history.log_event(
-            "disconnected", "vpn.example.com", profile="work", duration_seconds=42.0
-        )
+        history.log_event("disconnected", "vpn.example.com", profile="work", duration_seconds=42.0)
         out = tmp_path / "out.csv"
 
         from types import SimpleNamespace
 
-        rc = history._export_history(
-            SimpleNamespace(format="csv", file=str(out))
-        )
+        rc = history._export_history(SimpleNamespace(format="csv", file=str(out)))
         assert rc == 0
         text = out.read_text()
         assert "timestamp,event,profile,user,server,duration_seconds,message" in text

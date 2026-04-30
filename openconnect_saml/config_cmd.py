@@ -190,7 +190,7 @@ def validate_config(path: Path) -> list[tuple[str, str]]:
     # External-binary checks for TOTP providers that depend on a CLI tool.
     # Walk every profile + the global creds; warn once per missing binary.
     needed_binaries: dict[str, str] = {}
-    for name, prof in (profiles.items() if isinstance(profiles, dict) else []):
+    for name, prof in profiles.items() if isinstance(profiles, dict) else []:
         if not isinstance(prof, dict):
             continue
         creds = prof.get("credentials") or {}
@@ -217,8 +217,7 @@ def validate_config(path: Path) -> list[tuple[str, str]]:
                 issues.append(
                     (
                         "warning",
-                        f"{why} but '{binary}' is not on PATH — install it or "
-                        f"switch totp_source",
+                        f"{why} but '{binary}' is not on PATH — install it or switch totp_source",
                     )
                 )
 
@@ -327,6 +326,59 @@ def _cmd_diff(other_path: str) -> int:
     return 0
 
 
+def _cmd_import(other_path: str, *, merge: bool = True, force: bool = False) -> int:
+    """Import another TOML config and merge it with the active one.
+
+    Profile merge policy: existing profiles keep their values unless
+    ``--force`` is set, in which case incoming profiles overwrite. The
+    top-level scalars (notifications, connection_history, schema_version,
+    timeout, etc.) follow the same rule.
+    """
+    other = Path(other_path)
+    if not other.exists():
+        print(f"Error: file '{other}' not found.", file=sys.stderr)
+        return 1
+    try:
+        incoming = toml.loads(other.read_text())
+    except Exception as exc:  # noqa: BLE001
+        print(f"Error reading '{other}': {exc}", file=sys.stderr)
+        return 1
+
+    target_path = resolve_config_path(create=True)
+    current: dict = {}
+    if target_path.exists():
+        try:
+            current = toml.loads(target_path.read_text())
+        except Exception:  # noqa: BLE001
+            current = {}
+
+    merged = _merge_dicts(current, incoming, force=force) if merge else incoming
+
+    # Validate the merged config before writing
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    target_path.write_text(toml.dumps(merged))
+    target_path.chmod(0o600)
+    print(f"✓ Imported {other} into {target_path}")
+    return 0
+
+
+def _merge_dicts(base: dict, overlay: dict, *, force: bool) -> dict:
+    """Deep-merge ``overlay`` into ``base``.
+
+    Dicts are merged key-by-key; lists are replaced wholesale. When ``force``
+    is False, overlapping scalar / list keys in ``base`` win.
+    """
+    out = dict(base)
+    for key, val in overlay.items():
+        if key in out and isinstance(out[key], dict) and isinstance(val, dict):
+            out[key] = _merge_dicts(out[key], val, force=force)
+        elif key in out and not force:
+            continue
+        else:
+            out[key] = val
+    return out
+
+
 def handle_config_command(args) -> int:
     """Dispatch the ``config`` subcommand."""
     action = getattr(args, "config_action", None)
@@ -340,5 +392,7 @@ def handle_config_command(args) -> int:
         return _cmd_edit()
     if action == "diff":
         return _cmd_diff(args.other_file)
+    if action == "import":
+        return _cmd_import(args.other_file, force=getattr(args, "force", False))
     print(f"Unknown config action: {action}")
     return 1

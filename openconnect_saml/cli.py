@@ -274,6 +274,28 @@ def _add_connection_args(parser):
     connection_group.add_argument(
         "--ssl-legacy", dest="ssl_legacy", action="store_true", default=False
     )
+    connection_group.add_argument(
+        "--no-cert-check",
+        dest="no_cert_check",
+        action="store_true",
+        default=False,
+        help=(
+            "Skip TLS certificate verification during the SAML auth phase. "
+            "Use only with self-signed corporate gateways you trust. "
+            "Also passed through to openconnect itself."
+        ),
+    )
+    connection_group.add_argument(
+        "--allowed-hosts",
+        dest="allowed_hosts",
+        default=None,
+        metavar="HOST,HOST,...",
+        help=(
+            "Comma-separated whitelist of hostnames the headless redirect "
+            "chain is allowed to traverse (supports '*.example.com'). "
+            "The gateway and login URL hosts are auto-allowed."
+        ),
+    )
     cert_group = parser.add_argument_group("Client certificate (optional)")
     cert_group.add_argument(
         "--cert",
@@ -419,6 +441,16 @@ def create_argparser():
     )
     import_parser.add_argument(
         "--force", action="store_true", default=False, help="Overwrite existing profiles"
+    )
+
+    copy_parser = profiles_sub.add_parser("copy", help="Duplicate a profile under a new name")
+    copy_parser.add_argument("source", help="Source profile name")
+    copy_parser.add_argument("dest", help="Target profile name")
+    copy_parser.add_argument(
+        "--force",
+        action="store_true",
+        default=False,
+        help="Overwrite the target profile if it already exists",
     )
 
     set_parser = profiles_sub.add_parser(
@@ -576,6 +608,16 @@ def create_argparser():
         "diff", help="Show a unified diff against another config file"
     )
     diff_parser.add_argument("other_file", help="Path to the other TOML config")
+    import_parser = config_sub.add_parser(
+        "import", help="Merge another TOML config into the active one"
+    )
+    import_parser.add_argument("other_file", help="Path to the TOML config to import")
+    import_parser.add_argument(
+        "--force",
+        action="store_true",
+        default=False,
+        help="Let incoming values overwrite existing keys (default: keep existing)",
+    )
 
     # doctor
     doctor_parser = subparsers.add_parser("doctor", help="Run diagnostic checks")
@@ -713,27 +755,43 @@ def create_service_argparser():
     )
     subparsers = parser.add_subparsers(dest="service_action", required=True)
 
+    def _add_user_flag(p):
+        p.add_argument(
+            "--user",
+            "--user-unit",
+            dest="user_mode",
+            action="store_true",
+            default=False,
+            help="Use systemd --user (per-user unit, no sudo required)",
+        )
+
     install_p = subparsers.add_parser("install", help="Install systemd unit")
     install_p.add_argument("-s", "--server", required=True)
-    install_p.add_argument("-u", "--user")
+    install_p.add_argument("-u", dest="user", default=None, help="VPN username")
     install_p.add_argument("--browser", choices=["headless", "chrome", "qt"], default="headless")
     install_p.add_argument("--max-retries", type=int, default=None)
+    _add_user_flag(install_p)
 
     uninstall_p = subparsers.add_parser("uninstall", help="Remove systemd unit")
     uninstall_p.add_argument("-s", "--server", required=True)
+    _add_user_flag(uninstall_p)
 
     start_p = subparsers.add_parser("start", help="Start VPN service")
     start_p.add_argument("-s", "--server", required=True)
+    _add_user_flag(start_p)
 
     stop_p = subparsers.add_parser("stop", help="Stop VPN service")
     stop_p.add_argument("-s", "--server", required=True)
+    _add_user_flag(stop_p)
 
     status_p = subparsers.add_parser("status", help="Show service status")
     status_p.add_argument("-s", "--server", default=None)
+    _add_user_flag(status_p)
 
     logs_p = subparsers.add_parser("logs", help="Show service logs")
     logs_p.add_argument("-s", "--server", default=None)
     logs_p.add_argument("-f", "--follow", action="store_true")
+    _add_user_flag(logs_p)
 
     return parser
 

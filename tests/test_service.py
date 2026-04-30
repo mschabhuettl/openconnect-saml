@@ -170,4 +170,4 @@ class TestHandleServiceCommand:
         args = self._make_args(service_action="logs", follow=True)
         result = handle_service_command(args)
         assert result == 0
-        mock_logs.assert_called_once_with(server=None, follow=True)
+        mock_logs.assert_called_once_with(server=None, follow=True, user_mode=False)

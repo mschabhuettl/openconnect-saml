@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.0] – 2026-04-30
+
+### Added
+
+- **`profiles copy SRC DST`** — duplicate a saved profile under a new
+  name. ``--force`` overwrites an existing target.
+- **`config import FILE`** — merge another TOML config into the
+  active one. By default existing keys win (keeps your overrides
+  safe); ``--force`` lets the incoming file replace them. Dicts are
+  merged recursively, lists/scalars wholesale.
+- **`service install --user`** (and the rest of the `service` actions)
+  — install per-user systemd units under
+  ``~/.config/systemd/user/`` and manage them with `systemctl --user`.
+  No `sudo` required. Existing system-unit deployments are
+  auto-detected so you don't have to remember which mode you used.
+- **`--no-cert-check`** — disables TLS verification for the SAML
+  auth phase (and passes `--no-system-trust` through to openconnect).
+  Closes the gap that left issue #19 reachable.
+- **`--allowed-hosts HOST,HOST,...`** for headless mode — explicit
+  hostname whitelist for the redirect chain (supports `*.suffix`
+  globs). The gateway and login URL hosts are auto-allowed; any
+  redirect off that path is refused with a clear `HeadlessAuthError`.
+  Closes the long-open #11 security gap.
+- **`schema_version` bumped to 2** — first real migration in the
+  framework. ``profiles migrate`` adds `schema_version = 2` to
+  configs that don't have it; existing v1 configs continue to load
+  unchanged.
+
+### Notes
+
+- All additions are pure-additive. Existing CLI flags, configs, and
+  workflows continue to work without changes. No new runtime
+  dependencies.
+
 ## [0.19.0] – 2026-04-30
 
 ### Added

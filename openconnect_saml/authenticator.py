@@ -30,6 +30,8 @@ class Authenticator:
         timeout=30,
         window_width=800,
         window_height=600,
+        verify_tls=True,
+        allowed_hosts=None,
     ):
         self.host = host
         self.proxy = proxy
@@ -39,7 +41,11 @@ class Authenticator:
         self.ssl_legacy = ssl_legacy
         self.window_width = window_width
         self.window_height = window_height
-        self.session = create_http_session(proxy, version, ssl_legacy=ssl_legacy)
+        self.verify_tls = verify_tls
+        self.allowed_hosts = allowed_hosts
+        self.session = create_http_session(
+            proxy, version, ssl_legacy=ssl_legacy, verify_tls=verify_tls
+        )
 
     async def authenticate(self, display_mode):
         self._detect_authentication_target_url()
@@ -94,7 +100,9 @@ class Authenticator:
     def _detect_authentication_target_url(self):
         # Follow possible redirects in a GET request
         # Authentication will occur using a POST request on the final URL
-        response = create_probe_session(self.proxy, ssl_legacy=self.ssl_legacy).get(
+        response = create_probe_session(
+            self.proxy, ssl_legacy=self.ssl_legacy, verify_tls=self.verify_tls
+        ).get(
             self.host.vpn_url,
             timeout=self.timeout,
         )
@@ -118,6 +126,8 @@ class Authenticator:
                 credentials=self.credentials,
                 ssl_legacy=self.ssl_legacy,
                 timeout=self.timeout,
+                allowed_hosts=getattr(self, "allowed_hosts", None),
+                verify_tls=getattr(self, "verify_tls", True),
             )
             return await headless.authenticate(auth_request_response)
 
@@ -188,7 +198,7 @@ class SSLLegacyAdapter(requests.adapters.HTTPAdapter):
         return super().init_poolmanager(*args, **kwargs)
 
 
-def create_http_session(proxy, version, ssl_legacy=False):
+def create_http_session(proxy, version, ssl_legacy=False, verify_tls=True):
     session = requests.Session()
     session.proxies = {"http": proxy, "https": proxy}
     session.headers.update(
@@ -203,6 +213,21 @@ def create_http_session(proxy, version, ssl_legacy=False):
             # I know, it is invalid but that's what Anyconnect sends
         }
     )
+    session.verify = verify_tls
+    if not verify_tls:
+        # Suppress urllib3's noisy InsecureRequestWarning since we've made an
+        # explicit, deliberate choice to skip cert validation. The user opted
+        # in via --no-cert-check.
+        try:
+            import urllib3
+
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        except Exception:  # noqa: BLE001
+            pass
+        logger.warning(
+            "TLS certificate verification disabled — only do this for "
+            "self-signed corporate gateways you trust."
+        )
     if ssl_legacy:
         logger.info("Enabling SSL legacy renegotiation support")
         adapter = SSLLegacyAdapter()
@@ -210,10 +235,11 @@ def create_http_session(proxy, version, ssl_legacy=False):
     return session
 
 
-def create_probe_session(proxy, ssl_legacy=False):
+def create_probe_session(proxy, ssl_legacy=False, verify_tls=True):
     """Create a redirect-probe session without AnyConnect-only headers."""
     session = requests.Session()
     session.proxies = {"http": proxy, "https": proxy}
+    session.verify = verify_tls
     if ssl_legacy:
         logger.info("Enabling SSL legacy renegotiation support")
         adapter = SSLLegacyAdapter()

@@ -442,7 +442,7 @@ def _convert_profiles(val):
     return val
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def _convert_profile_groups(val):

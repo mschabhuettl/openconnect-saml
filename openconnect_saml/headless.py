@@ -66,6 +66,8 @@ class HeadlessAuthenticator:
         timeout=30,
         callback_port=DEFAULT_CALLBACK_PORT,
         callback_timeout=DEFAULT_CALLBACK_TIMEOUT,
+        allowed_hosts: list[str] | None = None,
+        verify_tls: bool = True,
     ):
         self.proxy = proxy
         self.credentials = credentials
@@ -73,6 +75,12 @@ class HeadlessAuthenticator:
         self.timeout = timeout
         self.callback_port = callback_port
         self.callback_timeout = callback_timeout
+        # Hostname whitelist for headless redirect chain (#11). When None,
+        # the gateway and login_url hosts are auto-allowed. When a non-empty
+        # list, every redirect target must match (exact hostname or
+        # ``*.suffix`` glob).
+        self.allowed_hosts: list[str] | None = list(allowed_hosts) if allowed_hosts else None
+        self.verify_tls = verify_tls
         self.session = self._create_session()
 
     def _create_session(self):
@@ -97,7 +105,34 @@ class HeadlessAuthenticator:
 
             adapter = SSLLegacyAdapter()
             session.mount("https://", adapter)
+        session.verify = self.verify_tls
         return session
+
+    def _host_allowed(self, url: str) -> bool:
+        """Check if ``url``'s hostname is on the whitelist.
+
+        ``self.allowed_hosts == None`` means "no whitelist enforcement"
+        (default behaviour). An empty list means "block everything"
+        (probably never useful but explicit). Globs of the form
+        ``*.example.com`` match any subdomain of ``example.com``.
+        """
+        if self.allowed_hosts is None:
+            return True
+        try:
+            host = (urlparse(url).hostname or "").lower()
+        except (ValueError, AttributeError):
+            return False
+        if not host:
+            return False
+        for entry in self.allowed_hosts:
+            entry = entry.strip().lower()
+            if not entry:
+                continue
+            if entry == host:
+                return True
+            if entry.startswith("*.") and host.endswith(entry[1:]):
+                return True
+        return False
 
     async def authenticate(self, auth_request_response):
         """Attempt headless authentication and return the SSO token.
@@ -147,6 +182,19 @@ class HeadlessAuthenticator:
         """Automatic form-based authentication using requests + lxml."""
         from lxml import html as lxml_html
 
+        # Auto-extend the whitelist (if any) with the obvious endpoints
+        # so the user doesn't have to list the gateway + IdP themselves.
+        if self.allowed_hosts is not None:
+            for url in (login_url, login_final_url):
+                host = urlparse(url).hostname
+                if host and host.lower() not in (h.lower() for h in self.allowed_hosts):
+                    self.allowed_hosts.append(host)
+
+        if not self._host_allowed(login_url):
+            raise HeadlessAuthError(
+                f"Login URL host {urlparse(login_url).hostname!r} not in allowed_hosts"
+            )
+
         resp = self.session.get(login_url, timeout=self.timeout, allow_redirects=True)
         resp.raise_for_status()
 
@@ -154,6 +202,11 @@ class HeadlessAuthenticator:
         for step in range(max_steps):
             current_url = resp.url
             logger.debug("Headless auth step", step=step, url=current_url)
+            if not self._host_allowed(current_url):
+                raise HeadlessAuthError(
+                    f"Refusing to follow redirect to {urlparse(current_url).hostname!r} "
+                    "(not in allowed_hosts whitelist)"
+                )
 
             # Check if we've reached the final URL
             if self._url_matches(current_url, login_final_url):

@@ -285,7 +285,9 @@ class TestHistoryExportSubcommand:
         assert args.format == "csv"
 
     def test_history_export_json(self, main_parser):
-        args = main_parser.parse_args(["history", "export", "--format", "json", "-o", "/tmp/h.json"])
+        args = main_parser.parse_args(
+            ["history", "export", "--format", "json", "-o", "/tmp/h.json"]
+        )
         assert args.format == "json"
         assert args.file == "/tmp/h.json"
 
@@ -298,6 +300,73 @@ class TestSetupAdvanced:
     def test_setup_default_not_advanced(self, main_parser):
         args = main_parser.parse_args(["setup"])
         assert args.advanced is False
+
+
+class TestNoCertCheckFlag:
+    def test_no_cert_check_default(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com"])
+        assert args.no_cert_check is False
+
+    def test_no_cert_check_set(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com", "--no-cert-check"])
+        assert args.no_cert_check is True
+
+
+class TestAllowedHostsFlag:
+    def test_default_none(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com"])
+        assert args.allowed_hosts is None
+
+    def test_single_host(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com", "--allowed-hosts", "idp.example.com"])
+        assert args.allowed_hosts == "idp.example.com"
+
+    def test_multiple_hosts(self, parser):
+        args = parser.parse_args(
+            ["-s", "vpn.example.com", "--allowed-hosts", "idp.x,*.duosecurity.com"]
+        )
+        assert args.allowed_hosts == "idp.x,*.duosecurity.com"
+
+
+class TestProfilesCopySubcommand:
+    def test_copy(self, main_parser):
+        args = main_parser.parse_args(["profiles", "copy", "work", "work-copy"])
+        assert args.profiles_action == "copy"
+        assert args.source == "work"
+        assert args.dest == "work-copy"
+        assert args.force is False
+
+    def test_copy_force(self, main_parser):
+        args = main_parser.parse_args(["profiles", "copy", "work", "x", "--force"])
+        assert args.force is True
+
+
+class TestConfigImportSubcommand:
+    def test_import_default(self, main_parser):
+        args = main_parser.parse_args(["config", "import", "/tmp/x.toml"])
+        assert args.config_action == "import"
+        assert args.other_file == "/tmp/x.toml"
+        assert args.force is False
+
+    def test_import_force(self, main_parser):
+        args = main_parser.parse_args(["config", "import", "/tmp/x.toml", "--force"])
+        assert args.force is True
+
+
+class TestServiceUserMode:
+    def test_install_user_mode(self):
+        from openconnect_saml.cli import create_service_argparser
+
+        p = create_service_argparser()
+        args = p.parse_args(["install", "-s", "vpn.example.com", "--user"])
+        assert args.user_mode is True
+
+    def test_install_default_system_mode(self):
+        from openconnect_saml.cli import create_service_argparser
+
+        p = create_service_argparser()
+        args = p.parse_args(["install", "-s", "vpn.example.com"])
+        assert args.user_mode is False
 
 
 class TestVersionFlag:

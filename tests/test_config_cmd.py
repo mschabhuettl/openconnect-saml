@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -236,6 +237,66 @@ server = "new.example.com"
     def test_diff_other_missing(self, tmp_config_dir, capsys):
         write_config(tmp_config_dir, '[profiles.work]\nserver = "x"\n')
         rc = config_cmd._cmd_diff("/nonexistent.toml")
+        assert rc == 1
+
+
+class TestCmdImport:
+    def test_import_merge_keeps_existing(self, tmp_config_dir, capsys):
+        cfg_path = write_config(
+            tmp_config_dir,
+            """
+[profiles.work]
+server = "old.example.com"
+""",
+        )
+        other = tmp_config_dir.parent / "other.toml"
+        other.write_text(
+            """
+[profiles.work]
+server = "new.example.com"
+
+[profiles.lab]
+server = "lab.example.com"
+"""
+        )
+        with patch(
+            "openconnect_saml.config_cmd.resolve_config_path",
+            return_value=cfg_path,
+        ):
+            rc = config_cmd._cmd_import(str(other), force=False)
+        assert rc == 0
+        merged = cfg_path.read_text()
+        # work.server is kept (no force); lab is added
+        assert "old.example.com" in merged
+        assert "new.example.com" not in merged
+        assert "lab.example.com" in merged
+
+    def test_import_force_overwrites(self, tmp_config_dir):
+        cfg_path = write_config(
+            tmp_config_dir,
+            """
+[profiles.work]
+server = "old.example.com"
+""",
+        )
+        other = tmp_config_dir.parent / "other.toml"
+        other.write_text(
+            """
+[profiles.work]
+server = "new.example.com"
+"""
+        )
+        with patch(
+            "openconnect_saml.config_cmd.resolve_config_path",
+            return_value=cfg_path,
+        ):
+            rc = config_cmd._cmd_import(str(other), force=True)
+        assert rc == 0
+        merged = cfg_path.read_text()
+        assert "new.example.com" in merged
+
+    def test_import_missing_file(self, tmp_config_dir, capsys):
+        rc = config_cmd._cmd_import("/nonexistent.toml")
         assert rc == 1
 
 

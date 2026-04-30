@@ -52,8 +52,35 @@ def handle_profiles_command(args):
         return _migrate_profiles(args)
     if action == "set":
         return _set_profile_field(args)
+    if action == "copy":
+        return _copy_profile(args)
     # Default: list profiles
     return _list_profiles()
+
+
+def _copy_profile(args):
+    """Duplicate a profile under a new name. Refuses to overwrite existing
+    targets unless ``--force`` is given."""
+    cfg = config.load()
+    src = args.source
+    dst = args.dest
+    overwrite = getattr(args, "force", False)
+
+    prof = cfg.get_profile(src)
+    if prof is None:
+        print(f"Error: source profile '{src}' not found.", file=sys.stderr)
+        return 1
+    if dst in cfg.profiles and not overwrite:
+        print(
+            f"Error: target profile '{dst}' already exists (use --force to overwrite).",
+            file=sys.stderr,
+        )
+        return 1
+
+    cfg.add_profile(dst, prof.as_dict())
+    config.save(cfg)
+    print(f"Copied '{src}' → '{dst}'.")
+    return 0
 
 
 # ---------------------------------------------------------------------------
@@ -509,6 +536,21 @@ _register_migration("Move legacy [default_profile] to [profiles.default] (multi-
 _register_migration("Drop unused [2fauth] / [bitwarden] / [1password] / [pass] sections")(
     _drop_unused_provider_sections_pair()
 )
+
+
+def _bump_schema_version_pair():
+    """Bring ``schema_version`` up to the current ``config.SCHEMA_VERSION``."""
+
+    def predicate(cfg):
+        return getattr(cfg, "schema_version", 1) != config.SCHEMA_VERSION
+
+    def fix(cfg):
+        cfg.schema_version = config.SCHEMA_VERSION
+
+    return predicate, fix
+
+
+_register_migration(f"Bump schema_version to {config.SCHEMA_VERSION}")(_bump_schema_version_pair())
 
 
 def _migrate_profiles(args):
