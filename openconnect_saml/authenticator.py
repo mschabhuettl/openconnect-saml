@@ -215,6 +215,11 @@ def create_http_session(proxy, version, ssl_legacy=False, verify_tls=True):
     )
     session.verify = verify_tls
     if not verify_tls:
+        # ``REQUESTS_CA_BUNDLE`` / ``CURL_CA_BUNDLE`` env vars override
+        # ``session.verify=False`` unless we also opt out of env handling.
+        # Without this the user's --no-cert-check has no effect on systems
+        # that set those vars (which is the default on most Linux distros).
+        session.trust_env = False
         # Suppress urllib3's noisy InsecureRequestWarning since we've made an
         # explicit, deliberate choice to skip cert validation. The user opted
         # in via --no-cert-check.
@@ -240,6 +245,9 @@ def create_probe_session(proxy, ssl_legacy=False, verify_tls=True):
     session = requests.Session()
     session.proxies = {"http": proxy, "https": proxy}
     session.verify = verify_tls
+    if not verify_tls:
+        # See `create_http_session` for the rationale on trust_env.
+        session.trust_env = False
     if ssl_legacy:
         logger.info("Enabling SSL legacy renegotiation support")
         adapter = SSLLegacyAdapter()

@@ -120,12 +120,20 @@ def _list_profiles():
 
 
 def _add_profile(args):
-    """Add or update a named profile."""
+    """Add or update a named profile.
+
+    All non-required fields default to empty when stdin isn't a TTY (CI /
+    automation use). Interactive runs still get the helpful prompts.
+    """
     cfg = config.load()
     name = args.profile_name
+    is_interactive = sys.stdin.isatty()
 
     server = getattr(args, "server", None)
     if not server:
+        if not is_interactive:
+            print("Error: --server is required (non-interactive run).", file=sys.stderr)
+            return 1
         try:
             server = input(f"Server for '{name}': ").strip()
             if not server:
@@ -140,14 +148,14 @@ def _add_profile(args):
     username = getattr(args, "user", None)
     totp_source = getattr(args, "totp_source", None)
 
-    if not username:
+    if not username and is_interactive:
         try:
             username = input("Username (leave empty to skip): ").strip() or None
         except (EOFError, KeyboardInterrupt):
             print("\nAborted.", file=sys.stderr)
             return 1
 
-    if not user_group:
+    if not user_group and is_interactive:
         try:
             user_group = input("User group (leave empty to skip): ").strip()
         except (EOFError, KeyboardInterrupt):

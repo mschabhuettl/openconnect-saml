@@ -1196,11 +1196,8 @@ def _handle_connect(args, parser):
     return app.run(args)
 
 
-def _is_legacy_invocation(argv):
-    """Check if the invocation uses legacy (no subcommand) style."""
-    if not argv:
-        return True
-    known_subcommands = {
+_KNOWN_SUBCOMMANDS: frozenset[str] = frozenset(
+    {
         "connect",
         "disconnect",
         "sessions",
@@ -1218,8 +1215,49 @@ def _is_legacy_invocation(argv):
         "tui",
         "run",
     }
-    first = argv[0]
-    return first.startswith("-") or first not in known_subcommands
+)
+
+# Global flags that may appear *before* the subcommand and should not push us
+# into legacy mode. Each entry maps the flag → number of additional argv slots
+# it consumes (1 = takes a value, 0 = boolean flag). Only flags actually
+# registered on the main parser go here; ``-l/--log-level`` lives on the
+# connect/legacy parser, so we don't list it.
+_GLOBAL_FLAGS: dict[str, int] = {
+    "--config": 1,
+    "--quiet": 0,
+    "-q": 0,
+    "--check": 0,
+}
+
+
+def _is_legacy_invocation(argv):
+    """Check if the invocation uses legacy (no-subcommand) style.
+
+    Skips past leading global flags (``--quiet``, ``-l DEBUG``,
+    ``--config FILE`` …) when deciding so that
+    ``openconnect-saml --quiet status`` correctly dispatches to the
+    ``status`` subcommand instead of being misread as a legacy connect.
+    """
+    if not argv:
+        return True
+    i = 0
+    while i < len(argv):
+        token = argv[i]
+        if token in _GLOBAL_FLAGS:
+            i += 1 + _GLOBAL_FLAGS[token]
+            continue
+        # Handle ``--flag=value`` form too (only for value-taking flags).
+        if "=" in token:
+            head = token.split("=", 1)[0]
+            if head in _GLOBAL_FLAGS:
+                i += 1
+                continue
+        break
+    if i >= len(argv):
+        # All tokens were global flags → legacy mode (will surface --version etc.)
+        return True
+    first = argv[i]
+    return first.startswith("-") or first not in _KNOWN_SUBCOMMANDS
 
 
 def _apply_config_override(args):

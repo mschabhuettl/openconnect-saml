@@ -84,6 +84,9 @@ known-first-party = ["openconnect_saml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "integration: end-to-end tests that spawn subprocesses + mock servers",
+]
 
 [tool.bandit]
 exclude_dirs = ["tests"]

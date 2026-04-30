@@ -106,6 +106,10 @@ class HeadlessAuthenticator:
             adapter = SSLLegacyAdapter()
             session.mount("https://", adapter)
         session.verify = self.verify_tls
+        if not self.verify_tls:
+            # ``REQUESTS_CA_BUNDLE`` env var would otherwise override
+            # ``session.verify=False`` and silently re-enable verification.
+            session.trust_env = False
         return session
 
     def _host_allowed(self, url: str) -> bool:
