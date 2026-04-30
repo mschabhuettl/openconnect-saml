@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] – 2026-04-30
+
+### Added
+
+- **Multi-session support** — connect to several VPN gateways
+  simultaneously without juggling shells:
+  - `connect --detach` daemonises the openconnect process after auth so
+    `openconnect-saml` exits while the tunnel keeps running.
+  - `disconnect [PROFILE]` stops a specific session by profile name;
+    `disconnect --all` stops every active session at once.
+  - `sessions list [--json]` enumerates every recorded live session
+    (profile, pid, server, started_at). Stale records are pruned on
+    read.
+- **Session state file** — `$XDG_STATE_HOME/openconnect-saml/sessions/<profile>.json`
+  (mode `0600`). Owned by the user, holds metadata only (profile name,
+  server, username, pid, parent pid, start timestamp). Never any
+  secrets.
+- **Status / TUI / GUI now consume session records** — when one or
+  more recorded sessions are live, `status` prefers the recorded
+  metadata over `pgrep` output; falls back to pgrep when no record
+  matches.
+
+### Notes
+
+- `connect --detach` requires sudo to be cached (or `NOPASSWD`) since
+  the openconnect-saml supervisor process exits before openconnect
+  finishes prompting. For interactive use, run plain `connect` and
+  push it to the background with `Ctrl-Z` + `bg` if needed, or stick
+  to `--reconnect` for long-running supervisor mode.
+- All additions are opt-in / backwards-compatible. Existing CLI flags,
+  config files, profiles, and history continue to work unchanged.
+
 ## [0.9.0] – 2026-04-29
 
 ### Added

@@ -168,15 +168,9 @@ def _get_reconnect_count():
     return 0
 
 
-def _collect_status():
-    """Collect all VPN status information."""
-    proc = _find_vpn_process()
-    if not proc:
-        return None
-
-    pid, cmdline = proc
+def _collect_status_for_pid(pid: int, cmdline: str, profile: str = "", user: str = ""):
+    """Build a status dict for a single openconnect pid."""
     iface = _get_vpn_interface()
-
     status = {
         "connected": True,
         "pid": pid,
@@ -187,6 +181,8 @@ def _collect_status():
         "tx": None,
         "rx": None,
         "reconnects": _get_reconnect_count(),
+        "profile": profile or "default",
+        "user": user or "N/A",
     }
 
     start_time = _get_process_start_time(pid)
@@ -199,15 +195,58 @@ def _collect_status():
         status["tx"] = tx
         status["rx"] = rx
 
-    # Try to get profile info from config
-    cfg = config.load()
-    status["profile"] = cfg.active_profile or "default"
-    if cfg.credentials:
-        status["user"] = cfg.credentials.username
-    else:
-        status["user"] = "N/A"
-
     return status
+
+
+def _collect_status():
+    """Collect VPN status for the most recent active session.
+
+    Backwards-compatible: returns the same shape as before but now
+    prefers a recorded session (multi-session aware) over `pgrep`. Falls
+    back to `pgrep` if no session record matches a live process.
+    """
+    from openconnect_saml import sessions as _sessions
+
+    active = _sessions.list_active()
+    cfg = config.load()
+
+    if active:
+        # Pick the active session whose profile matches the config's
+        # active_profile, if any; otherwise the first.
+        sess = next((s for s in active if s.profile == cfg.active_profile), active[0])
+        cmdline = ""
+        proc = _find_vpn_process()
+        if proc and proc[0] == sess.pid:
+            cmdline = proc[1]
+        return _collect_status_for_pid(
+            sess.pid, cmdline or sess.server, profile=sess.profile, user=sess.user
+        )
+
+    proc = _find_vpn_process()
+    if not proc:
+        return None
+    pid, cmdline = proc
+    return _collect_status_for_pid(
+        pid,
+        cmdline,
+        profile=cfg.active_profile or "default",
+        user=cfg.credentials.username if cfg.credentials else "",
+    )
+
+
+def _collect_all_statuses():
+    """Return one status dict per active recorded session."""
+    from openconnect_saml import sessions as _sessions
+
+    out: list[dict] = []
+    proc = _find_vpn_process()
+    pid_to_cmdline: dict[int, str] = {}
+    if proc:
+        pid_to_cmdline[proc[0]] = proc[1]
+    for sess in _sessions.list_active():
+        cmdline = pid_to_cmdline.get(sess.pid, sess.server)
+        out.append(_collect_status_for_pid(sess.pid, cmdline, profile=sess.profile, user=sess.user))
+    return out
 
 
 def _print_status_plain(status):

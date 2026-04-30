@@ -4,6 +4,38 @@ Day-to-day running of the VPN: keeping it alive, running it as a system
 service, getting notified about events, watching status, and reading
 the audit log.
 
+## Multiple simultaneous VPNs
+
+Connect several gateways at once and manage them by profile name:
+
+```bash
+# Start each one in detached mode (returns once openconnect is running)
+openconnect-saml connect work --detach
+openconnect-saml connect lab  --detach
+
+# See all live sessions
+openconnect-saml sessions list
+
+# Stop one
+openconnect-saml disconnect lab
+
+# Stop everything
+openconnect-saml disconnect --all
+```
+
+Session state lives under
+`$XDG_STATE_HOME/openconnect-saml/sessions/<profile>.json` (mode
+`0600`). The files only carry metadata — profile name, server,
+username, openconnect pid, start timestamp — never any secrets.
+
+`status` automatically picks up recorded sessions, so the TUI / GUI
+both surface the same view regardless of whether you're attached to
+the connect process or not.
+
+> **Note**: `--detach` works best when sudo is already cached or set
+> to `NOPASSWD` for `openconnect`. Otherwise the password prompt
+> appears after the supervisor has already exited.
+
 ## Auto-reconnect
 
 ```bash

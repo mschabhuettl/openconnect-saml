@@ -10,6 +10,8 @@ docs ([browsers](browsers.md), [authentication](authentication.md),
 | Subcommand | Purpose |
 |---|---|
 | `connect [PROFILE]` | Authenticate + launch openconnect (or use a saved profile) |
+| `disconnect [PROFILE]` | Stop a running VPN session by profile name |
+| `sessions` | List active VPN sessions |
 | `profiles` | List / add / remove / rename / show / export / import named profiles |
 | `setup` | Interactive configuration wizard |
 | `gui` | Tk launcher with Profiles / Status / History tabs |
@@ -121,7 +123,26 @@ supported.
 --ac-version STRING        AnyConnect Version (default: 4.7.00136)
 --no-history               Don't log this session to history.jsonl
 --authenticate FORMAT      Auth only, output cookie (json | shell)
+--detach                   Background the openconnect process; stop with
+                           'openconnect-saml disconnect [PROFILE]'
 ```
+
+## `disconnect` subcommand
+
+```bash
+openconnect-saml disconnect [PROFILE]    # stop one session
+openconnect-saml disconnect --all        # stop every active session
+openconnect-saml disconnect              # equivalent to --all when no profile
+```
+
+## `sessions` subcommand
+
+```bash
+openconnect-saml sessions list [--json]
+```
+
+Shows profile, pid, server, and start timestamp for every active
+session recorded under `$XDG_STATE_HOME/openconnect-saml/sessions/`.
 
 ### openconnect passthrough
 

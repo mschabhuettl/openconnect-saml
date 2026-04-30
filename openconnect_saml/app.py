@@ -142,6 +142,23 @@ def run(args):
     if tracker:
         tracker.start()
 
+    detach = getattr(args, "detach", False)
+    session_username = args.user or (cfg.credentials.username if cfg.credentials else "")
+    session_profile_name = profile_name or "default"
+
+    def _record_pid(pid):
+        from openconnect_saml.sessions import Session, record
+
+        record(
+            Session(
+                profile=session_profile_name,
+                server=selected_profile.vpn_url,
+                user=session_username,
+                pid=pid,
+                parent_pid=os.getpid(),
+            )
+        )
+
     try:
         rc = run_openconnect(
             auth_response,
@@ -155,6 +172,8 @@ def run(args):
             routes=routes,
             no_routes=no_routes,
             useragent=getattr(args, "useragent", None),
+            detach=detach,
+            on_pid=_record_pid,
         )
         return rc
     except KeyboardInterrupt:
@@ -167,6 +186,14 @@ def run(args):
             notify_disconnected(selected_profile.vpn_url)
         if tracker:
             tracker.stop()
+        if not detach:
+            # In foreground mode, remove the session record on exit so
+            # status / sessions list stay accurate. Detached sessions are
+            # cleaned up by `disconnect` or the next `sessions list` (which
+            # prunes stale records).
+            from openconnect_saml.sessions import remove
+
+            remove(session_profile_name)
         # Only auto-disable kill-switch if it was a CLI-session enablement.
         # If the user persisted it in config, keep it active.
         if killswitch and ks_cli_enabled and not ks_persisted:
@@ -636,7 +663,22 @@ def run_openconnect(
     routes=None,
     no_routes=None,
     useragent=None,
+    detach=False,
+    on_pid=None,
 ):
+    """Spawn the openconnect process.
+
+    Parameters
+    ----------
+    detach
+        If True, return as soon as openconnect is launched (the process
+        keeps running in its own session). Useful with the ``--detach``
+        CLI flag and ``openconnect-saml disconnect``.
+    on_pid
+        Optional callback invoked with the openconnect process PID right
+        after spawn (and before any blocking wait). Used to register the
+        session in ``sessions.py`` so other commands can find it.
+    """
     superuser_cmd = None
 
     if os.name == "nt":
@@ -692,11 +734,52 @@ def run_openconnect(
     session_token = auth_info.session_token.encode("utf-8")
     logger.debug("Starting OpenConnect", command_line=command_line)
 
+    if detach:
+        # Detach from the controlling terminal so the openconnect process
+        # survives when openconnect-saml exits.
+        popen_kwargs: dict = {
+            "stdin": subprocess.PIPE,
+            "stdout": subprocess.DEVNULL,
+            "stderr": subprocess.DEVNULL,
+        }
+        if os.name != "nt":
+            popen_kwargs["start_new_session"] = True
+        proc = subprocess.Popen(command_line, **popen_kwargs)  # nosec
+        try:
+            proc.stdin.write(session_token)
+            proc.stdin.close()
+        except BrokenPipeError:
+            pass
+        if on_pid:
+            try:
+                on_pid(proc.pid)
+            except Exception as exc:
+                logger.warning("on_pid callback raised", error=str(exc))
+        if on_connect:
+            handle_connect(on_connect)
+        logger.info("openconnect detached", pid=proc.pid)
+        return 0
+
     if on_connect:
         proc = subprocess.Popen(command_line, stdin=subprocess.PIPE)  # nosec
         proc.stdin.write(session_token)
         proc.stdin.close()
+        if on_pid:
+            try:
+                on_pid(proc.pid)
+            except Exception as exc:
+                logger.warning("on_pid callback raised", error=str(exc))
         handle_connect(on_connect)
+        return proc.wait()
+
+    if on_pid:
+        proc = subprocess.Popen(command_line, stdin=subprocess.PIPE)  # nosec
+        proc.stdin.write(session_token)
+        proc.stdin.close()
+        try:
+            on_pid(proc.pid)
+        except Exception as exc:
+            logger.warning("on_pid callback raised", error=str(exc))
         return proc.wait()
     return subprocess.run(command_line, input=session_token).returncode  # nosec
 

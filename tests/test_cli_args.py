@@ -89,6 +89,69 @@ class TestTuiSubcommand:
         assert args.command == "tui"
 
 
+class TestDetachFlag:
+    def test_detach_default_false(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com"])
+        assert args.detach is False
+
+    def test_detach_flag(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com", "--detach"])
+        assert args.detach is True
+
+    def test_detach_on_connect_subcommand(self, main_parser):
+        # --detach before the profile name is consumed by argparse directly.
+        args = main_parser.parse_args(
+            ["connect", "--detach", "work", "--server", "vpn.example.com"]
+        )
+        assert args.detach is True
+
+    def test_detach_after_profile_recovered_by_main(self):
+        # --detach swallowed into argparse.REMAINDER after `connect PROFILE`
+        # is recovered by _recover_connect_options_from_remainder.
+        from types import SimpleNamespace
+
+        from openconnect_saml.cli import _recover_connect_options_from_remainder
+
+        args = SimpleNamespace(
+            openconnect_args=["--server", "vpn.example.com", "--detach"],
+            detach=False,
+            browser=None,
+            headless=False,
+        )
+        _recover_connect_options_from_remainder(args)
+        assert args.detach is True
+        assert "--detach" not in args.openconnect_args
+
+
+class TestDisconnectSubcommand:
+    def test_disconnect_no_profile(self, main_parser):
+        args = main_parser.parse_args(["disconnect"])
+        assert args.command == "disconnect"
+        assert args.profile_name is None
+
+    def test_disconnect_with_profile(self, main_parser):
+        args = main_parser.parse_args(["disconnect", "work"])
+        assert args.profile_name == "work"
+
+    def test_disconnect_all(self, main_parser):
+        args = main_parser.parse_args(["disconnect", "--all"])
+        assert args.all is True
+
+
+class TestSessionsSubcommand:
+    def test_sessions_default_action(self, main_parser):
+        args = main_parser.parse_args(["sessions"])
+        assert args.command == "sessions"
+
+    def test_sessions_list(self, main_parser):
+        args = main_parser.parse_args(["sessions", "list"])
+        assert args.sessions_action == "list"
+
+    def test_sessions_list_json(self, main_parser):
+        args = main_parser.parse_args(["sessions", "list", "--json"])
+        assert args.json is True
+
+
 class TestExportFormatFlag:
     def test_export_format_default_json(self, main_parser):
         args = main_parser.parse_args(["profiles", "export", "work"])

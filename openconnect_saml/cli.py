@@ -82,6 +82,13 @@ def _add_connection_args(parser):
     parser.add_argument("--on-connect", help="Command to run after VPN connects", default="")
     parser.add_argument("--on-disconnect", help="Command to run when disconnecting", default="")
     parser.add_argument(
+        "--detach",
+        action="store_true",
+        default=False,
+        help="Daemonize after authentication; openconnect runs in the background. "
+        "Stop with 'openconnect-saml disconnect [PROFILE]'",
+    )
+    parser.add_argument(
         "--ac-version", help="AnyConnect Version (default: %(default)s)", default="4.7.00136"
     )
     parser.add_argument(
@@ -353,6 +360,26 @@ def create_argparser():
         help="Persist changes (default: dry-run)",
     )
 
+    # disconnect
+    disconnect_parser = subparsers.add_parser(
+        "disconnect", help="Stop a running VPN session by profile name"
+    )
+    disconnect_parser.add_argument(
+        "profile_name",
+        nargs="?",
+        default=None,
+        help="Profile to disconnect (default: all active sessions)",
+    )
+    disconnect_parser.add_argument(
+        "--all", action="store_true", default=False, help="Disconnect every active session"
+    )
+
+    # sessions
+    sessions_parser = subparsers.add_parser("sessions", help="List or inspect active VPN sessions")
+    sessions_sub = sessions_parser.add_subparsers(dest="sessions_action")
+    sessions_list = sessions_sub.add_parser("list", help="List active sessions")
+    sessions_list.add_argument("--json", action="store_true", default=False)
+
     # status
     status_parser = subparsers.add_parser("status", help="Show VPN connection status")
     status_parser.add_argument("--watch", "-w", action="store_true", default=False)
@@ -546,6 +573,10 @@ def _recover_connect_options_from_remainder(args):
             args.browser = "headless"
             i += 1
             continue
+        if token == "--detach":
+            args.detach = True
+            i += 1
+            continue
         cleaned.append(token)
         i += 1
     args.openconnect_args = cleaned
@@ -603,6 +634,55 @@ def _handle_gui_command():
     from openconnect_saml.gui import main as gui_main
 
     return gui_main()
+
+
+def _handle_disconnect_command(args):
+    from openconnect_saml.sessions import kill, list_active
+
+    profile = getattr(args, "profile_name", None)
+    do_all = getattr(args, "all", False)
+
+    if do_all or not profile:
+        sessions = list_active()
+        if not sessions:
+            print("No active sessions.")
+            return 0
+        ok = 0
+        for sess in sessions:
+            if kill(sess.profile):
+                print(f"Disconnected '{sess.profile}' (pid {sess.pid})")
+                ok += 1
+        return 0 if ok else 1
+
+    if kill(profile):
+        print(f"Disconnected '{profile}'.")
+        return 0
+    print(f"No active session for profile '{profile}'.")
+    return 1
+
+
+def _handle_sessions_command(args):
+    import json as _json
+
+    from openconnect_saml.sessions import list_active
+
+    action = getattr(args, "sessions_action", None) or "list"
+    sessions = list_active()
+    if action == "list":
+        as_json = getattr(args, "json", False)
+        if as_json:
+            print(_json.dumps([s.__dict__ for s in sessions], indent=2))
+            return 0
+        if not sessions:
+            print("No active sessions.")
+            return 0
+        print(f"{'Profile':<14}  {'PID':>7}  {'Server':<28}  Started")
+        print("-" * 80)
+        for s in sessions:
+            print(f"{s.profile:<14}  {s.pid:>7}  {s.server:<28}  {s.started_at}")
+        return 0
+    print(f"Unknown sessions action: {action}")
+    return 1
 
 
 def _handle_tui_command():
@@ -669,6 +749,8 @@ def _is_legacy_invocation(argv):
         return True
     known_subcommands = {
         "connect",
+        "disconnect",
+        "sessions",
         "profiles",
         "status",
         "completion",
@@ -736,6 +818,10 @@ def main():
             return _handle_gui_command()
         if args.command == "tui":
             return _handle_tui_command()
+        if args.command == "disconnect":
+            return _handle_disconnect_command(args)
+        if args.command == "sessions":
+            return _handle_sessions_command(args)
 
         parser.print_help()
         return 0
