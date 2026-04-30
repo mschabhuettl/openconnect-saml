@@ -355,9 +355,26 @@ def _rename_py_to_toml(d: dict) -> dict:
     return d
 
 
+def _convert_optional_str(val):
+    if val is None:
+        return None
+    return str(val)
+
+
+def _convert_optional_bool(val):
+    if val is None:
+        return None
+    return bool(val)
+
+
 @attr.s
 class ProfileConfig(ConfigNode):
-    """A named VPN profile with server, credentials, and optional settings."""
+    """A named VPN profile with server, credentials, and optional settings.
+
+    Per-profile overrides for ``browser``, ``notify``, ``on_connect``,
+    ``on_disconnect``, and ``kill_switch`` were introduced in v0.11.0.
+    They take precedence over the top-level config values when set.
+    """
 
     server = attr.ib(converter=str)
     user_group = attr.ib(converter=str, default="")
@@ -370,6 +387,14 @@ class ProfileConfig(ConfigNode):
     routes = attr.ib(factory=list, converter=_convert_str_list)
     no_routes = attr.ib(factory=list, converter=_convert_str_list)
 
+    # Per-profile overrides (v0.11.0+). All optional; ``None`` means
+    # "fall back to the top-level config / CLI default".
+    browser = attr.ib(default=None, converter=_convert_optional_str)
+    notify = attr.ib(default=None, converter=_convert_optional_bool)
+    on_connect = attr.ib(default=None, converter=_convert_optional_str)
+    on_disconnect = attr.ib(default=None, converter=_convert_optional_str)
+    kill_switch = attr.ib(default=None, converter=_convert_killswitch)
+
     @classmethod
     def from_dict(cls, d):
         if d is None:
@@ -378,6 +403,10 @@ class ProfileConfig(ConfigNode):
 
     def as_dict(self):
         d = attr.asdict(self, filter=lambda a, v: a.init)
+        # Drop optional overrides that are explicitly None to keep TOML clean
+        for key in ("browser", "notify", "on_connect", "on_disconnect", "kill_switch"):
+            if d.get(key) is None:
+                d.pop(key, None)
         return _rename_py_to_toml(d)
 
     def to_host_profile(self):
@@ -401,8 +430,12 @@ def _convert_profiles(val):
     return val
 
 
+SCHEMA_VERSION = 1
+
+
 @attr.s
 class Config(ConfigNode):
+    schema_version = attr.ib(default=SCHEMA_VERSION, converter=int)
     default_profile = attr.ib(default=None, converter=HostProfile.from_dict)
     credentials = attr.ib(default=None, converter=Credentials.from_dict)
     twofauth = attr.ib(default=None, converter=_convert_twofauth)

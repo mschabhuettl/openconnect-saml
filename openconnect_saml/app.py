@@ -85,24 +85,30 @@ def run(args):
 
     reconnect = getattr(args, "reconnect", False)
     max_retries = getattr(args, "max_retries", None)
-    notify = getattr(args, "notify", False) or cfg.notifications
+
+    profile_name = getattr(args, "profile_name", None)
+    profile = cfg.get_profile(profile_name) if profile_name else None
+
+    # Resolution order for any setting: CLI > per-profile > top-level config.
+    notify = getattr(args, "notify", False)
+    if not notify and profile is not None and profile.notify is not None:
+        notify = profile.notify
+    if not notify:
+        notify = cfg.notifications
 
     # Resolve routes: CLI > profile config
     routes = getattr(args, "routes", None) or []
     no_routes = getattr(args, "no_routes", None) or []
 
-    profile_name = getattr(args, "profile_name", None)
-    if profile_name:
-        prof = cfg.get_profile(profile_name)
-        if prof:
-            if not routes and prof.routes:
-                routes = prof.routes
-            if not no_routes and prof.no_routes:
-                no_routes = prof.no_routes
+    if profile is not None:
+        if not routes and profile.routes:
+            routes = profile.routes
+        if not no_routes and profile.no_routes:
+            no_routes = profile.no_routes
 
-    # Kill-switch — resolve CLI > config
+    # Kill-switch — resolve CLI > per-profile > top-level config
     ks_cli_enabled = getattr(args, "kill_switch", False)
-    ks_cfg = cfg.kill_switch
+    ks_cfg = profile.kill_switch if profile and profile.kill_switch else cfg.kill_switch
     ks_persisted = ks_cfg.enabled if ks_cfg else False
     killswitch_enabled = ks_cli_enabled or ks_persisted
     killswitch = None
@@ -563,7 +569,18 @@ async def _run(args, cfg):
         selected_profile.address, selected_profile.user_group, selected_profile.name
     )
 
+    # Browser backend: CLI > per-profile > Qt default
     browser_backend = getattr(args, "browser", None)
+    profile_for_browser = (
+        cfg.get_profile(getattr(args, "profile_name", None))
+        if getattr(args, "profile_name", None)
+        else None
+    )
+    if not browser_backend and profile_for_browser and profile_for_browser.browser:
+        browser_backend = profile_for_browser.browser
+        if browser_backend == "headless":
+            args.headless = True
+
     if browser_backend == "chrome":
         display_mode = CHROME_MODE
     elif getattr(args, "headless", False) or browser_backend == "headless":
@@ -599,12 +616,18 @@ async def _run(args, cfg):
     if credentials:
         credentials.save()
 
-    if args.on_disconnect and not cfg.on_disconnect:
+    # on_connect / on_disconnect: CLI > per-profile > top-level config.
+    profile_for_hooks = profile_for_browser
+    if args.on_disconnect:
         cfg.on_disconnect = args.on_disconnect
+    elif profile_for_hooks and profile_for_hooks.on_disconnect:
+        cfg.on_disconnect = profile_for_hooks.on_disconnect
 
     on_connect = getattr(args, "on_connect", "")
-    if on_connect and not cfg.on_connect:
+    if on_connect:
         cfg.on_connect = on_connect
+    elif profile_for_hooks and profile_for_hooks.on_connect:
+        cfg.on_connect = profile_for_hooks.on_connect
 
     return auth_response, selected_profile
 

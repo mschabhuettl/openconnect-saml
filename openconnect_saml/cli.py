@@ -313,6 +313,19 @@ def create_argparser():
         default=None,
         choices=["local", "2fauth", "bitwarden", "1password", "pass", "none"],
     )
+    add_parser.add_argument(
+        "--browser",
+        default=None,
+        choices=["qt", "chrome", "headless"],
+        help="Default browser backend for this profile",
+    )
+    add_parser.add_argument(
+        "--notify",
+        dest="notify",
+        action="store_true",
+        default=None,
+        help="Enable notifications by default for this profile",
+    )
 
     remove_parser = profiles_sub.add_parser("remove", help="Remove a profile")
     remove_parser.add_argument("profile_name")

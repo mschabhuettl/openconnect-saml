@@ -132,6 +132,13 @@ def _add_profile(args):
             cred_data["totp_source"] = totp_source
         profile_data["credentials"] = cred_data
 
+    browser = getattr(args, "browser", None)
+    if browser:
+        profile_data["browser"] = browser
+    notify = getattr(args, "notify", None)
+    if notify is not None:
+        profile_data["notify"] = bool(notify)
+
     existed = name in cfg.profiles
     cfg.add_profile(name, profile_data)
     config.save(cfg)

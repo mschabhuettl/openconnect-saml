@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] – 2026-04-30
+
+### Added
+
+- **Per-profile setting overrides** — `[profiles.<name>]` now accepts
+  five optional fields that take precedence over the corresponding
+  top-level config / CLI defaults:
+  - `browser` — `qt` / `chrome` / `headless`
+  - `notify` — `true` / `false`
+  - `on_connect` / `on_disconnect` — shell command strings
+  - `kill_switch` — full `[kill_switch]`-shaped subsection (per-profile
+    enabled / allow_lan / ipv6 / dns_servers)
+
+  When unset (default), behaviour is unchanged — top-level config or
+  CLI flag wins. Resolution order is always **CLI > per-profile >
+  top-level config**.
+
+- **`profiles add --browser BACKEND` and `--notify`** — set those
+  fields directly when creating a profile.
+
+- **Config schema versioning** — new `schema_version = 1` field on the
+  top-level `Config`. Future breaking changes bump this and surface a
+  hint in `profiles migrate`. Existing configs without the field
+  default to schema 1 transparently.
+
+### Notes
+
+- Pure-additive release; existing CLI flags, config files, and
+  profiles continue to work unchanged.
+- All overrides are stripped from `as_dict()` when ``None``, so saved
+  configs don't grow noisy `<field> = ""` rows.
+
 ## [0.10.0] – 2026-04-30
 
 ### Added

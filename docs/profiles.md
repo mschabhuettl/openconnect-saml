@@ -44,19 +44,35 @@ openconnect-saml --server vpn.example.com --user user@example.com
 server = "vpn.company.com"
 user_group = "employees"
 name = "Work VPN"
+# Per-profile overrides (v0.11.0+). All optional; unset = use top-level config.
+browser = "chrome"                   # qt | chrome | headless
+notify = true                         # desktop notifications
+on_connect = "/usr/local/bin/route-add"
+on_disconnect = "/usr/local/bin/route-cleanup"
 
 [profiles.work.credentials]
 username = "user@company.com"
 totp_source = "1password"
 
+# Per-profile kill-switch — overrides [kill_switch] entirely when set.
+[profiles.work.kill_switch]
+enabled = true
+allow_lan = false
+ipv6 = true
+dns_servers = ["1.1.1.1"]
+
 [profiles.lab]
 server = "lab-vpn.company.com"
 name = "Lab VPN"
+browser = "headless"      # different IdP — no Qt browser, just headless
 
 [profiles.lab.credentials]
 username = "admin"
 totp_source = "none"     # don't prompt for TOTP
 ```
+
+Resolution order for any setting: **CLI flag > per-profile field >
+top-level config**.
 
 ## Export / import (JSON)
 
