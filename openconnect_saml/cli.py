@@ -89,6 +89,12 @@ def _add_connection_args(parser):
     parser.add_argument("--on-connect", help="Command to run after VPN connects", default="")
     parser.add_argument("--on-disconnect", help="Command to run when disconnecting", default="")
     parser.add_argument(
+        "--on-error",
+        dest="on_error",
+        default="",
+        help="Command to run if authentication or connect fails (receives exit code in $RC)",
+    )
+    parser.add_argument(
         "--detach",
         "--background",
         dest="detach",
@@ -512,6 +518,9 @@ def create_argparser():
         "disconnect", help="Disconnect every profile in a group"
     )
     groups_disconnect.add_argument("group_name")
+    groups_rename = groups_sub.add_parser("rename", help="Rename a group")
+    groups_rename.add_argument("old_name")
+    groups_rename.add_argument("new_name")
 
     # disconnect
     disconnect_parser = subparsers.add_parser(
@@ -985,6 +994,20 @@ def _handle_groups_command(args):
         if not ok:
             print(f"No active sessions in group '{gname}'.")
             return 1
+        return 0
+
+    if action == "rename":
+        old, new = args.old_name, args.new_name
+        if old not in groups:
+            print(f"Error: group '{old}' not found.", file=sys.stderr)
+            return 1
+        if new in groups:
+            print(f"Error: group '{new}' already exists.", file=sys.stderr)
+            return 1
+        groups[new] = groups.pop(old)
+        cfg.profile_groups = groups
+        _config.save(cfg)
+        print(f"Renamed group '{old}' → '{new}'.")
         return 0
 
     print(f"Unknown groups action: {action}")

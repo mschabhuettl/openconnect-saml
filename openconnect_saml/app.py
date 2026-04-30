@@ -46,27 +46,34 @@ def run(args):
 
     cfg = config.load()
 
+    on_error_cmd = getattr(args, "on_error", "") or ""
+
+    def _bail(rc: int) -> int:
+        if on_error_cmd:
+            handle_error(on_error_cmd, rc)
+        return rc
+
     try:
         auth_response, selected_profile = asyncio.run(_run(args, cfg))
     except KeyboardInterrupt:
         logger.warning("CTRL-C pressed, exiting")
-        return 130
+        return _bail(130)
     except ValueError as e:
         msg, retval = e.args
         logger.error(msg)
-        return retval
+        return _bail(retval)
     except Terminated:
         logger.warning("Browser window terminated, exiting")
-        return 2
+        return _bail(2)
     except AuthResponseError as exc:
         logger.error(
             f'Required attributes not found in response ("{exc}", '
             "does this endpoint do SSO?), exiting"
         )
-        return 3
+        return _bail(3)
     except HTTPError as exc:
         logger.error(f"Request error: {exc}")
-        return 4
+        return _bail(4)
 
     config.save(cfg)
 
@@ -922,3 +929,26 @@ def handle_disconnect(command):
         except (FileNotFoundError, OSError) as exc:
             logger.error("On-disconnect command failed", command_line=command, error=str(exc))
             return 1
+
+
+def handle_error(command, exit_code: int):
+    """Run an on-error hook (with $RC set to the exit code) if one is configured."""
+    if not command:
+        return
+    if not _validate_hook_command(command):
+        logger.error(
+            "Refusing to run on-error command with suspicious content",
+            command_line=command,
+        )
+        return
+    env = dict(os.environ)
+    env["RC"] = str(exit_code)
+    logger.info("Running on-error command", command_line=command, exit_code=exit_code)
+    try:
+        subprocess.run(  # nosec
+            shlex.split(command), timeout=10, shell=False, env=env, check=False
+        )
+    except subprocess.TimeoutExpired:
+        logger.warning("On-error command timed out after 10s", command_line=command)
+    except (FileNotFoundError, OSError) as exc:
+        logger.error("On-error command failed", command_line=command, error=str(exc))

@@ -229,7 +229,12 @@ class WebBrowser(QWebEngineView):
         getattr(page, signal_name).connect(self._on_webauthn_ux_requested)
         logger.debug("WebAuthn UX handler connected", signal=signal_name)
 
-    @pyqtSlot(object)
+    # No @pyqtSlot decorator: the signal is
+    # ``webAuthUxRequested(QWebEngineWebAuthUxRequest*)`` and PyQt6 6.11+
+    # rejects ``@pyqtSlot(object)`` as incompatible (#24, regression
+    # introduced in v0.8.2). An undecorated slot accepts the request
+    # object directly without requiring us to import the C++ type at
+    # decorator-evaluation time (which would also fail on Qt < 6.7).
     def _on_webauthn_ux_requested(self, request):
         """Driver for the WebAuthn UX state machine (#24)."""
         self._webauthn_request = request
@@ -247,7 +252,14 @@ class WebBrowser(QWebEngineView):
             return
 
         if state == states.SelectAccount:
-            names = list(getattr(request, "userNames", lambda: [])() or [])
+            # userNames may be a property, a callable, or absent depending on
+            # the QtWebEngine build. Try the callable form first, then fall
+            # back to property access.
+            raw = getattr(request, "userNames", None)
+            try:
+                names = list(raw() or []) if callable(raw) else list(raw or [])
+            except (AttributeError, TypeError):
+                names = []
             if not names:
                 request.cancel()
                 return

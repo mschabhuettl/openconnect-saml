@@ -353,6 +353,24 @@ class TestConfigImportSubcommand:
         assert args.force is True
 
 
+class TestOnErrorFlag:
+    def test_default_empty(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com"])
+        assert args.on_error == ""
+
+    def test_set(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com", "--on-error", "/usr/bin/notify-error"])
+        assert args.on_error == "/usr/bin/notify-error"
+
+
+class TestGroupsRenameSubcommand:
+    def test_groups_rename(self, main_parser):
+        args = main_parser.parse_args(["groups", "rename", "work", "office"])
+        assert args.groups_action == "rename"
+        assert args.old_name == "work"
+        assert args.new_name == "office"
+
+
 class TestServiceUserMode:
     def test_install_user_mode(self):
         from openconnect_saml.cli import create_service_argparser

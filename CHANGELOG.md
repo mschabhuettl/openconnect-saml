@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.0] – 2026-04-30
+
+### Fixed
+
+- **Qt browser regression in v0.8.2 (#24)** — the WebAuthn UX handler
+  was decorated with ``@pyqtSlot(object)``, which PyQt6 6.11+ rejects
+  with `TypeError: decorated slot has no signature compatible with
+  webAuthUxRequested(QWebEngineWebAuthUxRequest*)`. This broke
+  `--browser qt` mode entirely on modern PyQt builds, regardless of
+  whether WebAuthn was involved. The decorator is now removed so
+  PyQt accepts the slot without strict signature matching, and the
+  `userNames` property is read both as a callable and as an attribute
+  for cross-version compatibility.
+- Diagnosis credit: [@salty-flower](https://github.com/salty-flower) on #24.
+
+### Added
+
+- **`--on-error CMD` hook** — runs a command if authentication or
+  connect fails. The exit code is exposed to the hook via the `RC`
+  environment variable (e.g.
+  `--on-error 'curl -X POST -d "vpn failed: $RC" ...'`). Useful for
+  alerting / monitoring integrations.
+- **`groups rename OLD NEW`** — round out the group-management API.
+  Symmetric with `profiles rename`.
+
+### Notes
+
+- This release is pure-additive *plus* the regression fix. Users on
+  v0.8.2–v0.20.0 with `--browser qt` and PyQt6 ≥ 6.11 should
+  upgrade — the previous releases would raise the slot-signature
+  error before the browser even loaded.
+
 ## [0.20.0] – 2026-04-30
 
 ### Added
