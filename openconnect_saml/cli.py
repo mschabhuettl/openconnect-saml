@@ -1378,7 +1378,26 @@ def _print_version(check: bool = False) -> int:
     return 0
 
 
+def _force_utf8_streams() -> None:
+    """On Windows the default console codepage (cp1252) can't encode
+    Unicode glyphs we use freely in CLI output (``→``, ``✓``, ``✗``, …).
+    Reconfigure stdout/stderr to UTF-8 with an error-replace fallback so
+    a stray glyph never crashes the whole command. No-op on POSIX where
+    UTF-8 is already the default.
+    """
+    import contextlib
+
+    if sys.platform != "win32":
+        return
+    for stream in (sys.stdout, sys.stderr):
+        # Stream may be already detached / replaced (e.g. in pytest
+        # capture); reconfigure is best-effort.
+        with contextlib.suppress(AttributeError, OSError):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
+
 def main():
+    _force_utf8_streams()
     argv = sys.argv[1:]
 
     # 'service' has its own parser because it conflicts with the main one

@@ -86,6 +86,13 @@ def _pid_alive(pid: int) -> bool:
     except PermissionError:
         # Another user's process — still considered alive
         return True
+    except OSError:
+        # Windows: ``os.kill(missing_pid, 0)`` raises a generic
+        # ``OSError: [WinError 87] The parameter is incorrect`` rather
+        # than ``ProcessLookupError``. Treat that as "not alive" so
+        # session records for stale PIDs get pruned instead of
+        # propagating a confusing error.
+        return False
     return True
 
 

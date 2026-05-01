@@ -60,6 +60,11 @@ dev = [
     "pytest-cov>=5.0",
     "pytest-httpserver>=1.0",
     "ruff>=0.4",
+    # Used by encrypted_backup at runtime (lazy-imported) and by the
+    # integration mock gateway to generate self-signed certs. On Linux
+    # it usually arrives transitively, but on Windows the dep tree
+    # doesn't always pull it in, so make it explicit for tests.
+    "cryptography",
 ]
 
 [project.scripts]

@@ -7,32 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.22.3] – 2026-05-01
 
-### Fixed
+### Fixed (Windows)
 
+- **`UnicodeEncodeError` on `cp1252` console** — Windows defaults
+  stdout/stderr to the active console codepage (typically cp1252),
+  which can't encode the `→` / `✓` / `✗` glyphs we use in CLI output
+  (`profiles add`, `config validate`, etc.). A bare `print(...)`
+  containing one of those crashed the whole command on a Windows
+  console. The CLI entry point now reconfigures stdout/stderr to
+  UTF-8 with `errors="replace"` on Windows. POSIX is untouched.
+- **`_pid_alive` raised `OSError [WinError 87]` for stale PIDs** —
+  on Windows `os.kill(missing_pid, 0)` raises a generic `OSError`
+  instead of `ProcessLookupError`. We now catch the bare `OSError`
+  and treat it as "not alive" so stale session records get pruned
+  cleanly instead of propagating the error up.
 - **`sessions.kill()` crashed on Windows when the SIGTERM grace period
   expired** — the escalation step did `os.kill(pid, signal.SIGKILL)`,
-  but `signal.SIGKILL` doesn't exist on Windows (`AttributeError:
-  module 'signal' has no attribute 'SIGKILL'`). The function now uses
-  `getattr(signal, "SIGKILL", None)` and skips the escalation on
-  platforms without it. On Windows `os.kill(pid, SIGTERM)` already
-  invokes `TerminateProcess`, so the missing escalation is a no-op
-  rather than a regression.
-- **Windows CI gate (`Tests (gate) / test (windows-latest, 3.12)`)
-  no longer fails** — the new coverage test
-  `test_kill_escalates_to_sigkill_when_term_ignored` (added in
-  v0.22.2 from PR #25) referenced `signal.SIGKILL` directly, which
-  blew up at the point where the test was supposed to assert on the
-  escalation. Now `@pytest.mark.skipif(not hasattr(signal, "SIGKILL"))`
-  so it runs on POSIX and skips cleanly on Windows.
+  but `signal.SIGKILL` doesn't exist on Windows (`AttributeError`).
+  The function now uses `getattr(signal, "SIGKILL", None)` and skips
+  the escalation on platforms without it. Windows' `SIGTERM` is
+  already an unconditional `TerminateProcess`, so skipping the
+  escalation matches existing runtime behaviour.
+- **`tests/test_coverage_additions.py::TestSessionsExtras::
+  test_kill_escalates_to_sigkill_when_term_ignored`** carries
+  `@pytest.mark.skipif(not hasattr(signal, "SIGKILL"))` so it runs
+  on POSIX and skips cleanly on Windows.
+- **`cryptography` is now an explicit `[dev]` extra** — the encrypted
+  backup tests and the integration mock gateway both lazy-import
+  `cryptography`. On most Linux setups it arrives transitively via
+  other deps, but on Windows the dep tree didn't pull it in, so
+  ~12 tests failed with `ModuleNotFoundError`. Now declared.
 
 ### Notes
 
-- v0.22.2 was tagged but never reached PyPI / AUR — the new release
-  gate added in v0.22.2 caught the Windows failure and held back
+- v0.22.2 was tagged but never reached PyPI / AUR — the release gate
+  added in v0.22.2 caught the Windows matrix failure and held back
   every downstream job (`build`, `publish`, `Create GitHub Release`,
   `Trigger AUR update` all `skipped`). v0.22.3 is what actually
-  ships the v0.22.2 changes (issue-#19 follow-up + the Copilot
-  coverage tests) plus this Windows fix.
+  ships the v0.22.2 changes (issue #19 follow-up + the Copilot
+  coverage tests from PR #25) plus the four Windows-specific fixes
+  above.
 
 ## [0.22.2] – 2026-05-01
 
