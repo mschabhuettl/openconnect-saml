@@ -7,6 +7,7 @@ import shlex
 import shutil
 import signal
 import subprocess  # nosec
+import sys
 from pathlib import Path
 
 import structlog
@@ -39,6 +40,28 @@ from openconnect_saml.totp_providers import (
 )
 
 logger = structlog.get_logger()
+
+
+def _read_password(prompt: str) -> str:
+    """Prompt for a secret without echo when stdin is a TTY; read a
+    plain line from stdin otherwise.
+
+    ``getpass.getpass`` on Windows reads directly from the console
+    (``msvcrt.getwch``) and ignores ``sys.stdin``. When the wrapper
+    runs as a subprocess with piped stdin (CI, scripts, ``run`` mode)
+    that means it blocks forever waiting for console input that will
+    never arrive. Detecting a non-TTY stdin here and falling back to
+    ``sys.stdin.readline`` keeps the wrapper drivable from a pipe on
+    every platform.
+    """
+    if sys.stdin.isatty():
+        return getpass.getpass(prompt=prompt)
+    sys.stderr.write(prompt)
+    sys.stderr.flush()
+    line = sys.stdin.readline()
+    if not line:
+        return ""
+    return line.rstrip("\r\n")
 
 
 def run(args):
@@ -564,7 +587,7 @@ async def _run(args, cfg):
         credentials = Credentials(args.user)
 
     if credentials and not credentials.password:
-        credentials.password = getpass.getpass(prompt=f"Password ({args.user}): ")
+        credentials.password = _read_password(prompt=f"Password ({args.user}): ")
         cfg.credentials = credentials
 
     configure_totp_provider(args, cfg, credentials)
@@ -579,7 +602,7 @@ async def _run(args, cfg):
         and totp_source not in ("none", "bitwarden", "1password", "pass", "2fauth")
         and not credentials.totp
     ):
-        entered = getpass.getpass(
+        entered = _read_password(
             prompt=f"TOTP secret (leave blank if not required) ({args.user}): "
         )
         if entered.strip():

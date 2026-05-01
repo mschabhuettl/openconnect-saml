@@ -28,14 +28,21 @@ def isolated(tmp_path, monkeypatch):
 
 
 def _cli(*argv, stdin_input=None, timeout=20):
-    return subprocess.run(  # nosec
-        [sys.executable, "-m", "openconnect_saml.cli", *argv],
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        env={**os.environ},
-        input=stdin_input,
-    )
+    # Force a non-TTY stdin when no input is provided. Otherwise on
+    # Windows runners the child inherits pytest's console stdin and
+    # ``sys.stdin.isatty()`` returns True, which trips wizard prompts
+    # the test never wanted.
+    kwargs: dict = {
+        "capture_output": True,
+        "text": True,
+        "timeout": timeout,
+        "env": {**os.environ},
+    }
+    if stdin_input is None:
+        kwargs["stdin"] = subprocess.DEVNULL
+    else:
+        kwargs["input"] = stdin_input
+    return subprocess.run([sys.executable, "-m", "openconnect_saml.cli", *argv], **kwargs)  # nosec
 
 
 @pytest.mark.integration

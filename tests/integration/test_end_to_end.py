@@ -44,16 +44,21 @@ def _run_cli(
 
     ``stdin_input`` is fed verbatim to the child's stdin — useful to satisfy
     `getpass.getpass` prompts when the test env has no controlling tty.
+    When ``stdin_input`` is None we force a closed stdin so wizard prompts
+    on Windows runners (where pytest's stdin is a console) don't fire.
     """
-    return subprocess.run(  # nosec
-        [sys.executable, "-m", "openconnect_saml.cli", *argv],
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        cwd=cwd,
-        env={**os.environ},
-        input=stdin_input,
-    )
+    kwargs: dict = {
+        "capture_output": True,
+        "text": True,
+        "timeout": timeout,
+        "cwd": cwd,
+        "env": {**os.environ},
+    }
+    if stdin_input is None:
+        kwargs["stdin"] = subprocess.DEVNULL
+    else:
+        kwargs["input"] = stdin_input
+    return subprocess.run([sys.executable, "-m", "openconnect_saml.cli", *argv], **kwargs)  # nosec
 
 
 @pytest.mark.integration
