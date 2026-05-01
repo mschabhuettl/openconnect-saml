@@ -7,6 +7,12 @@ on:
     branches: [main]
   workflow_call:  # so release.yml / publish.yml can re-use this matrix as a gate
 
+# Needed for the debug pytest-output comment on PR failures (GH_TOKEN ->
+# `gh pr comment ...`). The rest of the workflow is read-only.
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -49,6 +55,22 @@ jobs:
         with:
           name: pytest-output-${{ matrix.os }}-${{ matrix.python-version }}
           path: pytest-output.txt
+      - name: Comment pytest output on PR (debug)
+        if: failure() && github.event_name == 'pull_request'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          {
+            echo "### pytest tail — ${{ matrix.os }} / ${{ matrix.python-version }}"
+            echo ""
+            echo '```'
+            tail -200 pytest-output.txt
+            echo '```'
+          } > /tmp/comment.md
+          gh pr comment "${{ github.event.pull_request.number }}" \
+            --body-file /tmp/comment.md \
+            --repo "${{ github.repository }}"
       - name: Upload coverage report
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
         uses: actions/upload-artifact@v4
