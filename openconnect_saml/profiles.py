@@ -127,7 +127,14 @@ def _add_profile(args):
     """
     cfg = config.load()
     name = args.profile_name
-    is_interactive = sys.stdin.isatty()
+    # Both stdin AND stdout must be TTYs for the wizard to prompt. On
+    # Windows ``sys.stdin.isatty()`` can return True even for an
+    # inherited ``DEVNULL`` / nul stdin, so a single-stream check
+    # fires the wizard on subprocess-driven runs (CI, scripts, our
+    # integration tests) where it then EOFs and aborts. Requiring
+    # ``sys.stdout.isatty()`` too pins this down: scripted callers
+    # always capture stdout, real users at a terminal don't.
+    is_interactive = sys.stdin.isatty() and sys.stdout.isatty()
 
     server = getattr(args, "server", None)
     if not server:
