@@ -769,3 +769,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Initial public release of the maintained fork, combining features from
 [vlaci/openconnect-sso](https://github.com/vlaci/openconnect-sso) and
 [kowyo/openconnect-lite](https://github.com/kowyo/openconnect-lite).
+
