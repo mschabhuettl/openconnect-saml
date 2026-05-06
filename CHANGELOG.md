@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.3] – 2026-05-06
+
+### Changed
+
+- **Friendlier "Playwright is not installed" error.** When
+  `--browser chrome` runs without the `playwright` Python module
+  available, the wrapper now points at both `pip install
+  'openconnect-saml[chrome]'` *and* AUR's `python-playwright`,
+  with a warning that the bare `aur/playwright` package is the
+  Node.js library and won't satisfy `import playwright`. Triggered
+  by #39 — Arch user installed the wrong AUR package because the
+  naming intuition is "pip's `foo` ↔ AUR's `python-foo`" and got
+  the same ImportError.
+
 ## [0.24.2] – 2026-05-06
 
 Documentation + AUR packaging follow-ups on top of v0.24.1. No code

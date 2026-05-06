@@ -109,7 +109,11 @@ class ChromeBrowser:
             from playwright.async_api import async_playwright
         except ImportError as exc:
             raise ImportError(
-                "Playwright is not installed. Install with: pip install openconnect-saml[chrome]\n"
+                "Playwright is not installed. Install it via:\n"
+                "  • pip:  pip install 'openconnect-saml[chrome]'\n"
+                "  • AUR:  yay -S python-playwright   "
+                "(NOT 'aur/playwright' — that's the Node.js library "
+                "and won't satisfy `import playwright`)\n"
                 "Then run: playwright install chromium"
             ) from exc
 
