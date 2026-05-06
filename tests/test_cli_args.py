@@ -595,6 +595,22 @@ class TestBrowserDisplayMode:
         assert args.browser_display_mode == "shown"
 
 
+class TestChromeChannel:
+    def test_default_none(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com"])
+        assert args.chrome_channel is None
+
+    def test_chrome(self, parser):
+        args = parser.parse_args(
+            ["-s", "vpn.example.com", "--browser", "chrome", "--chrome-channel", "chrome"]
+        )
+        assert args.chrome_channel == "chrome"
+
+    def test_msedge(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com", "--chrome-channel", "msedge"])
+        assert args.chrome_channel == "msedge"
+
+
 class TestLogLevel:
     def test_debug(self, parser):
         args = parser.parse_args(["-s", "vpn.example.com", "-l", "DEBUG"])

@@ -95,6 +95,17 @@ def _add_connection_args(parser):
         nargs="?",
         default="shown",
     )
+    parser.add_argument(
+        "--chrome-channel",
+        help=(
+            "When --browser=chrome, use a system-installed Chrome / Edge "
+            "instead of Playwright's bundled Chromium download. "
+            "Values: chrome, chrome-beta, chrome-dev, chrome-canary, "
+            "msedge, msedge-beta, msedge-dev, msedge-canary. Default: "
+            "Playwright's bundled Chromium (requires `playwright install chromium`)."
+        ),
+        default=None,
+    )
     parser.add_argument("--on-connect", help="Command to run after VPN connects", default="")
     parser.add_argument("--on-disconnect", help="Command to run when disconnecting", default="")
     parser.add_argument(

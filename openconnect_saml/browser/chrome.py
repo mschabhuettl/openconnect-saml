@@ -75,12 +75,27 @@ class ChromeBrowser:
         HTTP(S) proxy URL.
     timeout : int
         Navigation timeout in milliseconds.
+    channel : str or None
+        Playwright browser channel — when set, Playwright uses a
+        system-installed Chrome/Edge instead of its bundled Chromium
+        download. Valid values: ``chrome``, ``chrome-beta``,
+        ``chrome-dev``, ``chrome-canary``, ``msedge``, ``msedge-beta``,
+        ``msedge-dev``, ``msedge-canary``. When ``None`` (default),
+        Playwright uses its bundled Chromium (the ~150 MB download
+        installed via ``playwright install chromium``).
     """
 
-    def __init__(self, headless: bool = True, proxy: str | None = None, timeout: int = 60_000):
+    def __init__(
+        self,
+        headless: bool = True,
+        proxy: str | None = None,
+        timeout: int = 60_000,
+        channel: str | None = None,
+    ):
         self.headless = headless
         self.proxy = proxy
         self.timeout = timeout
+        self.channel = channel
         self._playwright = None
         self._browser = None
         self._context = None
@@ -106,6 +121,11 @@ class ChromeBrowser:
         }
         if self.proxy:
             launch_args["proxy"] = {"server": self.proxy}
+        if self.channel:
+            # Use a system-installed Chrome / Edge instead of the
+            # Playwright-bundled Chromium. Saves the ~150 MB download
+            # if the user already has Chrome/Edge installed locally.
+            launch_args["channel"] = self.channel
 
         try:
             self._browser = await self._playwright.chromium.launch(**launch_args)

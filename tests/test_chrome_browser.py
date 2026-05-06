@@ -24,16 +24,23 @@ class TestChromeBrowser:
         assert browser.headless is True
         assert browser.proxy is None
         assert browser.timeout == 60_000
+        assert browser.channel is None
         assert browser.cookies == {}
         assert browser.url is None
 
     def test_init_custom(self):
         from openconnect_saml.browser.chrome import ChromeBrowser
 
-        browser = ChromeBrowser(headless=False, proxy="http://proxy:8080", timeout=30_000)
+        browser = ChromeBrowser(
+            headless=False,
+            proxy="http://proxy:8080",
+            timeout=30_000,
+            channel="chrome",
+        )
         assert browser.headless is False
         assert browser.proxy == "http://proxy:8080"
         assert browser.timeout == 30_000
+        assert browser.channel == "chrome"
 
     def test_url_matches(self):
         from openconnect_saml.browser.chrome import ChromeBrowser
@@ -61,6 +68,56 @@ class TestChromeBrowser:
                 assert browser is not None
             mock_spawn.assert_called_once()
             mock_close.assert_called_once()
+
+        asyncio.run(_test())
+
+    def test_channel_propagates_to_launch_args(self):
+        """When ``channel`` is set, Playwright's launch() must receive it
+        so it picks the system Chrome/Edge instead of bundled Chromium."""
+        from openconnect_saml.browser.chrome import ChromeBrowser
+
+        async def _test():
+            browser = ChromeBrowser(channel="chrome")
+
+            mock_chromium = MagicMock()
+            mock_chromium.launch = AsyncMock()
+            mock_pw = MagicMock()
+            mock_pw.chromium = mock_chromium
+            mock_pw.stop = AsyncMock()
+            mock_async_pw = MagicMock()
+            mock_async_pw.start = AsyncMock(return_value=mock_pw)
+
+            with patch("playwright.async_api.async_playwright", return_value=mock_async_pw):
+                await browser.spawn()
+
+            # The launch() call must have received channel="chrome".
+            launch_kwargs = mock_chromium.launch.call_args.kwargs
+            assert launch_kwargs.get("channel") == "chrome"
+
+        asyncio.run(_test())
+
+    def test_no_channel_means_no_channel_arg(self):
+        """When ``channel`` is None (default), Playwright's launch() must
+        NOT receive a ``channel`` kwarg — otherwise we'd accidentally
+        pin to a non-existent channel."""
+        from openconnect_saml.browser.chrome import ChromeBrowser
+
+        async def _test():
+            browser = ChromeBrowser()  # channel defaults to None
+
+            mock_chromium = MagicMock()
+            mock_chromium.launch = AsyncMock()
+            mock_pw = MagicMock()
+            mock_pw.chromium = mock_chromium
+            mock_pw.stop = AsyncMock()
+            mock_async_pw = MagicMock()
+            mock_async_pw.start = AsyncMock(return_value=mock_pw)
+
+            with patch("playwright.async_api.async_playwright", return_value=mock_async_pw):
+                await browser.spawn()
+
+            launch_kwargs = mock_chromium.launch.call_args.kwargs
+            assert "channel" not in launch_kwargs
 
         asyncio.run(_test())
 

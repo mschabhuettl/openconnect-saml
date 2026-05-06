@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.1] – 2026-05-06
+
+### Added
+
+- **`--chrome-channel CHANNEL` flag.** When using `--browser chrome`,
+  pick a system-installed Chrome / Edge instead of letting Playwright
+  download its bundled Chromium (~150 MB). Valid values: `chrome`,
+  `chrome-beta`, `chrome-dev`, `chrome-canary`, `msedge`, `msedge-beta`,
+  `msedge-dev`, `msedge-canary`. Default unchanged (Playwright bundled
+  Chromium). Closes the request from #24 to reuse already-installed
+  browsers.
+
+### Docs
+
+- `docs/authentication.md` calls out that **`--browser qt` cannot
+  drive FIDO2 hardware-key MFA on PyPI installations**. The PyPI
+  `PyQt6-WebEngine` wheel ships Chromium with WebUSB compiled out
+  entirely, so `navigator.credentials.get()` for USB security keys
+  is silently rejected before WebAuthn ever fires (root cause for
+  #24's "Yubikey LED never blinks" symptom). Recommends `--browser
+  chrome` (with optional `--chrome-channel` for system Chrome) or
+  `--auth-script` as the supported FIDO2 paths.
+
+### CI
+
+- Pipeline action bumps validated end-to-end via the new
+  `workflow_dispatch`-triggerable `release.yml` / `publish.yml`:
+  `astral-sh/setup-uv@v7` (was v4), `actions/download-artifact@v8`
+  (was v4). Closes Dependabot #34 + #32 in favour of #36.
+
 ## [0.24.0] – 2026-05-06
 
 A maintenance + features release: two new authentication

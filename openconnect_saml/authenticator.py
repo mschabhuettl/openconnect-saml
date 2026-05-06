@@ -33,9 +33,11 @@ class Authenticator:
         verify_tls=True,
         allowed_hosts=None,
         auth_script=None,
+        chrome_channel=None,
     ):
         self.host = host
         self.proxy = proxy
+        self.chrome_channel = chrome_channel
         self.credentials = credentials
         self.version = version
         self.timeout = timeout
@@ -141,6 +143,7 @@ class Authenticator:
                 headless=False,
                 proxy=self.proxy,
                 timeout=self.timeout * 1000,
+                channel=self.chrome_channel,
             ) as browser:
                 cookies = await browser.authenticate_at(
                     url=str(auth_request_response.login_url),

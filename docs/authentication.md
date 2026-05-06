@@ -155,14 +155,44 @@ SoloKey, etc.):
 
 - **Headless mode** uses the `python-fido2` library directly via USB
   HID. Install with `pip install "openconnect-saml[fido2]"`.
-- **Qt browser** wires `webAuthUxRequested` (Qt-WebEngine ≥ 6.7) so the
-  key LEDs light up natively.
 - **Chrome browser** uses Chromium's built-in WebAuthn — works out of
-  the box.
+  the box. **This is the recommended path for hardware-key MFA.**
+- **Qt browser** wires `webAuthUxRequested` (Qt-WebEngine ≥ 6.7), but
+  see the warning below for a known limitation on PyPI installations.
 
 A WebAuthn challenge during SAML auth surfaces as either a terminal
 prompt (`Touch your security key…`) or a Qt / Chrome dialog depending
 on the backend.
+
+> **⚠️ `--browser qt` cannot drive hardware keys on PyPI installations.**
+> The PyPI [`PyQt6-WebEngine`](https://pypi.org/project/PyQt6-WebEngine/)
+> wheel ships Chromium with `WebUSB` compiled out of the build entirely
+> (`disable-features=...,WebUSB`). Without that transport, Chromium
+> can't enumerate USB security keys, so `navigator.credentials.get()`
+> for FIDO2 is silently rejected at the C++ layer and Qt's
+> `webAuthUxRequested` signal never fires — the Yubikey / Nitrokey
+> LED never blinks. Documented in #24. There's no runtime workaround
+> (`--enable-features=WebUSB` doesn't re-enable a feature stripped at
+> build time); the fix would require a Qt rebuild with WebUSB linked
+> in, which is out of scope for a Python wrapper. **Use `--browser
+> chrome` for hardware-key MFA**, or wire your own browser via
+> `--auth-script`. Distro Qt packages (e.g. Arch's
+> `python-pyqt6-webengine`) may or may not work depending on how Qt
+> was compiled there.
+
+### Saving the ~150 MB Chromium download
+
+`--browser chrome` defaults to a Playwright-bundled Chromium installed
+via `playwright install chromium`. If you already have Chrome / Edge
+installed system-wide, point Playwright at it with `--chrome-channel`:
+
+```sh
+openconnect-saml connect <profile> --browser chrome --chrome-channel chrome
+```
+
+Valid channels: `chrome`, `chrome-beta`, `chrome-dev`, `chrome-canary`,
+`msedge`, `msedge-beta`, `msedge-dev`, `msedge-canary`. Skips the
+Playwright-bundled Chromium download entirely.
 
 ## Skipping prompts
 
