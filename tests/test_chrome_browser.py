@@ -3,9 +3,21 @@
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+# Some tests below patch ``playwright.async_api.async_playwright`` and call
+# ``spawn()``, which means Python actually imports the module. ``playwright``
+# is an optional extra (``pip install openconnect-saml[chrome]``) and is not
+# in the default ``[dev]`` install used by CI, so those tests have to skip
+# when the module isn't there.
+_PLAYWRIGHT_INSTALLED = importlib.util.find_spec("playwright") is not None
+_skip_no_playwright = pytest.mark.skipif(
+    not _PLAYWRIGHT_INSTALLED,
+    reason="playwright not installed; spawn() can't be exercised without the import target",
+)
 
 
 class TestChromeBrowser:
@@ -71,6 +83,7 @@ class TestChromeBrowser:
 
         asyncio.run(_test())
 
+    @_skip_no_playwright
     def test_channel_propagates_to_launch_args(self):
         """When ``channel`` is set, Playwright's launch() must receive it
         so it picks the system Chrome/Edge instead of bundled Chromium."""
@@ -96,6 +109,7 @@ class TestChromeBrowser:
 
         asyncio.run(_test())
 
+    @_skip_no_playwright
     def test_no_channel_means_no_channel_arg(self):
         """When ``channel`` is None (default), Playwright's launch() must
         NOT receive a ``channel`` kwarg — otherwise we'd accidentally
