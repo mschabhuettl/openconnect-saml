@@ -4,11 +4,6 @@ on:
   push:
     tags:
       - "v*"
-    # TEMPORARY (revert before merge): auto-trigger on every push to
-    # the test branch so we can validate the action bumps without
-    # clicking "Run workflow" in the UI.
-    branches:
-      - "chore/test-pipeline-bumps"
   # Manual trigger lets us validate pipeline changes (action bumps,
   # script edits) on a branch *before* a real tag goes out. The
   # publish-y steps (GitHub Release, AUR trigger) are gated on a
