@@ -66,13 +66,63 @@ jobs:
           git config user.email "aur@mschabhuettl.dev"
           git config user.name "Matthias Schabhüttl"
 
-          # Update PKGBUILD
-          sed -i "s/^pkgver=.*/pkgver=${VERSION}/" PKGBUILD
-          sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
-          sed -i "s/^sha256sums=.*/sha256sums=('${SHA}')/" PKGBUILD
+          # Regenerate PKGBUILD from scratch — keeps it in lockstep
+          # with .SRCINFO (was previously only sed-updated for
+          # pkgver/sha, which could drift from the .SRCINFO deps).
+          cat > PKGBUILD <<EOF_PKGBUILD
+          # Maintainer: Matthias Schabhüttl <aur@mschabhuettl.dev>
+          pkgname=openconnect-saml
+          pkgver=${VERSION}
+          pkgrel=1
+          pkgdesc='OpenConnect wrapper with Azure AD (SAML) SSO support for Cisco SSL-VPNs'
+          arch=('any')
+          url='https://github.com/mschabhuettl/openconnect-saml'
+          license=('GPL-3.0-or-later')
+          depends=(
+            'python>=3.10'
+            'openconnect'
+            'python-attrs'
+            'python-colorama'
+            'python-keyring'
+            'python-lxml'
+            'python-prompt_toolkit'
+            'python-pyotp'
+            'python-pyqt6'
+            'python-pyqt6-webengine'
+            'python-pysocks'
+            'python-pyxdg'
+            'python-requests'
+            'python-structlog'
+            'python-toml'
+          )
+          optdepends=(
+            'python-rich: rich-formatted output for `openconnect-saml status` and the interactive TUI'
+            'python-playwright: required for --browser chrome backend (run `playwright install chromium` after install)'
+            'python-fido2: hardware-key (Yubikey/Nitrokey) auth in --browser headless mode'
+            'keepassxc: --totp-source keepassxc (provides keepassxc-cli)'
+            'bitwarden-cli: --totp-source bitwarden (AUR; provides the `bw` CLI)'
+            '1password-cli: --totp-source 1password (AUR; provides the `op` CLI)'
+            'pass: --totp-source pass (provides the `pass` CLI; pair with `pass-otp`)'
+            'pass-otp: --totp-source pass (TOTP extension for `pass`)'
+          )
+          makedepends=('python-build' 'python-installer' 'python-hatchling')
+          source=("openconnect-saml-\${pkgver}.tar.gz::https://github.com/mschabhuettl/openconnect-saml/archive/v\${pkgver}.tar.gz")
+          sha256sums=('${SHA}')
 
-          # Generate .SRCINFO with the matching sha256, in a single atomic
-          # commit alongside the PKGBUILD update.
+          build() {
+            cd "\$pkgname-\$pkgver"
+            python -m build --wheel --no-isolation
+          }
+
+          package() {
+            cd "\$pkgname-\$pkgver"
+            python -m installer --destdir="\$pkgdir" dist/*.whl
+          }
+          EOF_PKGBUILD
+          # Strip the leading 10 spaces from each line (heredoc indentation).
+          sed -i 's/^          //' PKGBUILD
+
+          # Generate .SRCINFO matching the PKGBUILD above.
           {
             echo "pkgbase = openconnect-saml"
             echo "	pkgdesc = OpenConnect wrapper with Azure AD (SAML) SSO support for Cisco SSL-VPNs"
@@ -96,6 +146,14 @@ jobs:
             echo "	depends = python-requests"
             echo "	depends = python-structlog"
             echo "	depends = python-toml"
+            echo "	optdepends = python-rich: rich-formatted output for \`openconnect-saml status\` and the interactive TUI"
+            echo "	optdepends = python-playwright: required for --browser chrome backend (run \`playwright install chromium\` after install)"
+            echo "	optdepends = python-fido2: hardware-key (Yubikey/Nitrokey) auth in --browser headless mode"
+            echo "	optdepends = keepassxc: --totp-source keepassxc (provides keepassxc-cli)"
+            echo "	optdepends = bitwarden-cli: --totp-source bitwarden (AUR; provides the \`bw\` CLI)"
+            echo "	optdepends = 1password-cli: --totp-source 1password (AUR; provides the \`op\` CLI)"
+            echo "	optdepends = pass: --totp-source pass (provides the \`pass\` CLI; pair with \`pass-otp\`)"
+            echo "	optdepends = pass-otp: --totp-source pass (TOTP extension for \`pass\`)"
             echo "	makedepends = python-build"
             echo "	makedepends = python-installer"
             echo "	makedepends = python-hatchling"

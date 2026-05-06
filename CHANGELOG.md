@@ -5,6 +5,46 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.2] – 2026-05-06
+
+Documentation + AUR packaging follow-ups on top of v0.24.1. No code
+changes to the runtime — same wheel as v0.24.1 plus updated docs and
+a regenerated AUR `PKGBUILD` / `.SRCINFO`.
+
+### Docs
+
+- `docs/authentication.md` is more honest about distro-vs-PyPI Qt
+  builds for FIDO2 hardware keys: PyPI's `PyQt6-WebEngine` is
+  confirmed broken (WebUSB stripped at compile time, #24), but
+  distro `qt6-webengine` packages (Arch, Debian, Fedora, …) build
+  from upstream Qt sources and may have WebUSB enabled. Marked as
+  **unverified, please test and report on #24** — replaces the
+  earlier blanket "use --browser chrome" recommendation with one
+  that depends on how the user installed.
+- New caveat in the `--chrome-channel` section: Playwright doesn't
+  expose a `chromium` channel, so plain `pacman -S chromium` users
+  can't skip the Playwright download via the new flag. Two
+  workarounds documented (AUR `google-chrome`, or just run
+  `playwright install chromium` once).
+
+### Packaging
+
+- AUR `PKGBUILD` is now regenerated from scratch by
+  `aur-publish.yml` on every release, instead of being
+  sed-patched. That eliminates the drift risk between `PKGBUILD`
+  and `.SRCINFO` (deps used to live in two places).
+- New `optdepends` in the AUR package:
+  - `python-rich` — rich-formatted output for the `status` and
+    interactive `tui` subcommands (without it, both fall back to
+    plain text).
+  - `python-playwright` — required for `--browser chrome` backend
+    (run `playwright install chromium` after install).
+  - `python-fido2` — hardware-key (Yubikey / Nitrokey) auth in
+    `--browser headless` mode.
+  - `keepassxc`, `bitwarden-cli`, `1password-cli`, `pass`,
+    `pass-otp` — TOTP-source backends, only needed if the user
+    actually uses the matching `--totp-source`.
+
 ## [0.24.1] – 2026-05-06
 
 ### Added

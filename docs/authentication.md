@@ -175,10 +175,20 @@ on the backend.
 > (`--enable-features=WebUSB` doesn't re-enable a feature stripped at
 > build time); the fix would require a Qt rebuild with WebUSB linked
 > in, which is out of scope for a Python wrapper. **Use `--browser
-> chrome` for hardware-key MFA**, or wire your own browser via
-> `--auth-script`. Distro Qt packages (e.g. Arch's
-> `python-pyqt6-webengine`) may or may not work depending on how Qt
-> was compiled there.
+> chrome` for hardware-key MFA on PyPI installations**, or wire your
+> own browser via `--auth-script`.
+
+> **❓ Distro Qt builds (Arch, Debian, Fedora, …) are unverified.**
+> Distro `qt6-webengine` packages are typically compiled from
+> upstream Qt sources rather than the PyPI wheel, and Qt's defaults
+> may include `WebUSB` — but we haven't tested this end-to-end on a
+> live tenant. If you're on a distro install (e.g. via the AUR
+> package, `apt install python3-pyqt6.qtwebengine`, or a system
+> package manager), please **try `--browser qt` first and report
+> back on #24** so we can update this doc with confirmed results.
+> If your hardware key blinks at the WebAuthn prompt, you have a
+> working stack and we should document that as the recommended
+> path for distro users.
 
 ### Saving the ~150 MB Chromium download
 
@@ -193,6 +203,22 @@ openconnect-saml connect <profile> --browser chrome --chrome-channel chrome
 Valid channels: `chrome`, `chrome-beta`, `chrome-dev`, `chrome-canary`,
 `msedge`, `msedge-beta`, `msedge-dev`, `msedge-canary`. Skips the
 Playwright-bundled Chromium download entirely.
+
+> **Caveat for plain Chromium installs (e.g. Arch's `pacman -S
+> chromium`):** Playwright doesn't expose a `chromium` channel — only
+> Google Chrome and Microsoft Edge are recognised. If you have
+> Arch's stock Chromium installed and want to skip the Playwright
+> download, you have two options:
+>
+> 1. Install `google-chrome` from the AUR (`yay -S google-chrome`),
+>    then `--chrome-channel chrome` will pick it up.
+> 2. Just run `playwright install chromium` once — it caches under
+>    `~/.cache/ms-playwright/` and never re-downloads. The 150 MB is
+>    a one-off.
+>
+> A future `--chrome-executable PATH` flag would let users point
+> Playwright directly at `/usr/bin/chromium`. Tracked as a follow-up;
+> not in v0.24.x.
 
 ## Skipping prompts
 
