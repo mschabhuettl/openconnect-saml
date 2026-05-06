@@ -71,6 +71,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger AUR publish workflow
-        uses: peter-evans/repository-dispatch@v3
+        uses: peter-evans/repository-dispatch@v4
         with:
           event-type: aur-publish
