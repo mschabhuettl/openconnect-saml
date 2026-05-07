@@ -318,10 +318,37 @@ def _add_connection_args(parser):
     )
 
     connection_group = parser.add_argument_group("Connection options")
-    connection_group.add_argument("--no-sudo", dest="no_sudo", action="store_true", default=False)
-    connection_group.add_argument("--csd-wrapper", dest="csd_wrapper", default=None)
     connection_group.add_argument(
-        "--ssl-legacy", dest="ssl_legacy", action="store_true", default=False
+        "--no-sudo",
+        dest="no_sudo",
+        action="store_true",
+        default=False,
+        help=(
+            "Run openconnect directly without prepending sudo/doas. "
+            "Use this when openconnect doesn't need root — e.g. with "
+            "openconnect's --script-tun, where the script handles the "
+            "tunnel and no kernel TUN device is created."
+        ),
+    )
+    connection_group.add_argument(
+        "--csd-wrapper",
+        dest="csd_wrapper",
+        default=None,
+        help=(
+            "Path to a CSD wrapper script (Cisco's hostscan / posture "
+            "compliance check). Forwarded to openconnect as --csd-wrapper."
+        ),
+    )
+    connection_group.add_argument(
+        "--ssl-legacy",
+        dest="ssl_legacy",
+        action="store_true",
+        default=False,
+        help=(
+            "Allow legacy / weak SSL renegotiation when talking to the "
+            "VPN gateway. Forwarded to openconnect as --allow-insecure-crypto. "
+            "Needed for some old Cisco appliances; otherwise leave off."
+        ),
     )
     connection_group.add_argument(
         "--no-cert-check",

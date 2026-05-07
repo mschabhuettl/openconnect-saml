@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.4] – 2026-05-06
+
+### Changed
+
+- **`--no-sudo`, `--csd-wrapper` and `--ssl-legacy` now have help
+  text.** All three Connection-options flags previously had no
+  `help=` argument, so they were invisible in
+  `openconnect-saml --help` and users had to dig through the
+  source to find them. Triggered by #41 — user couldn't find
+  `--no-sudo` and asked for the feature it already provides. No
+  behaviour change.
+
 ## [0.24.3] – 2026-05-06
 
 ### Changed
