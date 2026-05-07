@@ -38,6 +38,7 @@ from openconnect_saml.totp_providers import (
     KeePassXCProvider,
     OnePasswordProvider,
     PassProvider,
+    PromptTotpProvider,
     TwoFAuthProvider,
 )
 
@@ -489,6 +490,14 @@ def configure_totp_provider(args, cfg, credentials) -> None:
         logger.debug("TOTP prompt disabled (totp_source=none)")
         return
 
+    if source == "prompt":
+        # Don't store anything; ask the user for a fresh 6-digit code
+        # at auth time. Nothing in the keyring, nothing in the config.
+        credentials.totp_source = "prompt"
+        credentials.set_totp_provider(PromptTotpProvider())
+        logger.info("Using interactive TOTP prompt (no secret stored)")
+        return
+
     if source == "bitwarden":
         bw_item_id = getattr(args, "bw_item_id", None)
         if cfg.bitwarden:
@@ -623,7 +632,8 @@ async def _run(args, cfg):
     # prompt again on every reconnect / next run (#TOTP-loop).
     if (
         credentials
-        and totp_source not in ("none", "bitwarden", "1password", "pass", "2fauth")
+        and totp_source
+        not in ("none", "bitwarden", "1password", "pass", "2fauth", "keepassxc", "prompt")
         and not credentials.totp
     ):
         entered = _read_password(

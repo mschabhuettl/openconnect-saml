@@ -169,7 +169,16 @@ def _add_connection_args(parser):
     totp_group.add_argument(
         "--totp-source",
         dest="totp_source",
-        choices=["local", "2fauth", "bitwarden", "1password", "pass", "keepassxc", "none"],
+        choices=[
+            "local",
+            "2fauth",
+            "bitwarden",
+            "1password",
+            "pass",
+            "keepassxc",
+            "prompt",
+            "none",
+        ],
         default=None,
         help="TOTP provider, or 'none' to skip the TOTP prompt entirely",
     )
@@ -464,7 +473,16 @@ def create_argparser():
     add_parser.add_argument(
         "--totp-source",
         default=None,
-        choices=["local", "2fauth", "bitwarden", "1password", "pass", "keepassxc", "none"],
+        choices=[
+            "local",
+            "2fauth",
+            "bitwarden",
+            "1password",
+            "pass",
+            "keepassxc",
+            "prompt",
+            "none",
+        ],
     )
     add_parser.add_argument(
         "--browser",

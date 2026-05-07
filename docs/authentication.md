@@ -29,11 +29,21 @@ Supported providers (selected via `--totp-source` or the
 | Provider | Setup |
 |---|---|
 | `local` *(default)* | Secret stored in the system keyring; prompted on first use |
+| `prompt` | Type the 6-digit code from your phone every connect, nothing stored |
 | `2fauth` | Self-hosted [2FAuth](https://docs.2fauth.app/) instance |
 | `bitwarden` | Bitwarden vault item via the `bw` CLI |
 | `1password` | 1Password item via the `op` CLI |
 | `pass` | `pass-otp` extension on top of [`pass`](https://www.passwordstore.org) |
+| `keepassxc` | KeePassXC `.kdbx` via the `keepassxc-cli` |
 | `none` | Skip the TOTP prompt entirely |
+
+> **What gets stored where:** TOTP is **time-based** —
+> `local`/`bitwarden`/`1password`/`pass`/`keepassxc` all store the
+> *secret* (the base32 string from the QR-code setup) and recompute
+> the 6-digit code on every connect. The 6-digit code itself is
+> never stored anywhere; it's regenerated from `secret + current_time`
+> per [RFC 6238](https://www.rfc-editor.org/rfc/rfc6238). Same model
+> as Google Authenticator / Authy on your phone.
 
 ### `local`
 
@@ -48,6 +58,43 @@ openconnect-saml --server vpn.example.com --no-totp
 # or persistently:
 openconnect-saml profiles add work --server vpn.example.com --totp-source none
 ```
+
+### `prompt` (type the code by hand every connect)
+
+When you'd rather type the 6-digit code from your phone authenticator
+app every time than persist a TOTP secret in the keyring:
+
+```bash
+openconnect-saml connect work --totp-source prompt
+# → Username/Password from saved credentials, then:
+# → TOTP code (6 digits): ▮
+# (you read 492173 off your phone, type it, hit enter; SAML auth runs)
+```
+
+Nothing is written to the keyring or to the config file. Each
+connect produces a fresh prompt. Useful when:
+
+- You can't or don't want to copy the TOTP secret out of your phone
+  (some MDM-managed authenticator apps refuse to export).
+- You're on a shared / less-trusted machine and don't want a
+  long-lived TOTP secret cached anywhere on it.
+- You're a "type it yourself" purist.
+
+Persistent form:
+
+```bash
+openconnect-saml profiles add work --server vpn.example.com --totp-source prompt
+# Now `openconnect-saml connect work` always asks; nothing in keyring.
+```
+
+If stdin isn't a TTY (e.g. piped, CI), the prompt reads one line
+from the pipe — useful for scripted runs that pipe a one-shot code in.
+
+> ⚠️ With `--browser headless` you only have the wrapper's prompt
+> as the entry point. With `--browser qt` or `--browser chrome` an
+> arguably simpler alternative is `--no-totp` plus typing the code
+> directly into the IdP's TOTP input field — the wrapper never
+> sees it that way at all.
 
 ### 2FAuth
 

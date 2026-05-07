@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.5] – 2026-05-06
+
+### Added
+
+- **`--totp-source prompt`** — interactive 6-digit-code prompt at
+  every connect, with **nothing stored** to the keyring or config.
+  Useful for users who'd rather type the code from their phone
+  authenticator app every time than persist a TOTP secret on the
+  machine. Stdin not-a-TTY is supported (one line from the pipe),
+  so scripted runs can pipe a one-shot code in. New section in
+  `docs/authentication.md` explaining the storage model
+  (TOTP = secret + time, only the secret is stored, code is recomputed
+  per RFC 6238) so the difference between `local` and `prompt` is
+  clearer.
+
+### Tests
+
+- 6 cases in `test_totp_prompt.py` covering typed code, whitespace
+  trimming, empty input, ^C / ^D abort, and end-to-end wiring via
+  `configure_totp_provider`.
+
 ## [0.24.4] – 2026-05-06
 
 ### Changed

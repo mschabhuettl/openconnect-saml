@@ -51,6 +51,34 @@ class TotpProvider(abc.ABC):
 # ---------------------------------------------------------------------------
 
 
+class PromptTotpProvider(TotpProvider):
+    """Interactively ask the user for a 6-digit TOTP code at auth time.
+
+    Nothing is stored — each call to :meth:`get_totp` prompts the user
+    again. Use this when you'd rather type the code from your phone's
+    authenticator app every connect than persist a TOTP secret in the
+    keyring.
+
+    Headless mode (no TTY): if stdin isn't a TTY, ``input()`` reads
+    one line from the pipe and uses that. Useful for scripted runs
+    that pipe a one-shot code in.
+    """
+
+    def get_totp(self) -> str | None:
+        try:
+            # Plain input() — TOTP codes are 6 digits and short-lived,
+            # showing them while typing helps spot fat-fingers (no
+            # security gain from hiding a code that expires in 30 s).
+            code = input("TOTP code (6 digits): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            logger.info("TOTP prompt aborted by user")
+            return None
+        if not code:
+            logger.info("Empty TOTP code entered — skipping")
+            return None
+        return code
+
+
 class LocalTotpProvider(TotpProvider):
     """Generate TOTP locally from a stored secret.
 
