@@ -36,7 +36,19 @@ paru -S openconnect-saml
 ```
 
 The AUR package follows upstream releases automatically (see
-`.github/workflows/aur-publish.yml`).
+`.github/workflows/aur-publish.yml`). Hard-deps include `python-pyqt6`
++ `python-pyqt6-webengine` (for `--browser qt`); `optdepends`
+surface what extras unlock additional backends:
+
+| Optdepend | Unlocks |
+|---|---|
+| `python-rich` | rich-formatted `status` and the interactive `tui` |
+| `python-playwright` | `--browser chrome` (Playwright headless Chromium). **Note:** `aur/playwright` is the **Node.js** library — make sure you install `aur/python-playwright` (#39). After install, run `playwright install chromium` once. |
+| `python-fido2` | hardware-key (Yubikey / Nitrokey) auth in `--browser headless` mode |
+| `keepassxc` | `--totp-source keepassxc` (provides the `keepassxc-cli`) |
+| `bitwarden-cli` | `--totp-source bitwarden` (provides `bw`) |
+| `1password-cli` | `--totp-source 1password` (provides `op`) |
+| `pass` + `pass-otp` | `--totp-source pass` |
 
 ## Requirements
 

@@ -39,7 +39,7 @@ openconnect-saml profiles remove lab
 
 `profiles set FIELD VALUE` accepts: `server`, `user_group`, `name`,
 `browser`, `notify`, `on_connect`, `on_disconnect`, `cert`, `cert_key`,
-`username`, `totp_source`. Booleans accept
+`username`, `totp_source`, `auth_script`. Booleans accept
 `true | false | yes | no | 1 | 0 | on | off`. An empty string clears
 an optional / per-profile-override field.
 

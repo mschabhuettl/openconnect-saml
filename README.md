@@ -56,11 +56,24 @@ openconnect-saml --server vpn.example.com --headless --user user@example.com
 ## Features
 
 - **Three browser backends** — Qt6 WebEngine, Chromium via Playwright,
-  or full headless. Hardware-key WebAuthn works in all three.
-  See [docs/browsers.md](docs/browsers.md).
-- **Five TOTP providers** — local keyring, [2FAuth](https://docs.2fauth.app),
-  Bitwarden, 1Password, pass — or `--no-totp` to skip the prompt.
+  or full headless. Hardware-key WebAuthn works in `--browser chrome`
+  out of the box. With `--chrome-channel chrome|msedge` Playwright
+  uses your system-installed Chrome / Edge instead of downloading
+  its own bundled Chromium. See [docs/browsers.md](docs/browsers.md).
+- **Seven TOTP providers** — local keyring,
+  [2FAuth](https://docs.2fauth.app), Bitwarden, 1Password, pass,
+  KeePassXC, plus `prompt` (type the 6-digit code from your phone
+  every connect, store nothing), or `--no-totp` to skip entirely.
   See [docs/authentication.md](docs/authentication.md).
+- **Microsoft Entra (Azure AD)** scripted in headless mode —
+  username + password + TOTP fully driven via HTTPS. Federated
+  tenants get an experimental ADFS / WS-Trust 2005 path; non-scriptable
+  flows (FIDO2-only, push-MFA) surface a clear error pointing at
+  `--browser chrome`.
+- **`--auth-script PATH`** escape hatch for IdPs the built-in flow
+  can't drive (in-house SSO, custom MFA). Your script gets the SSO
+  endpoint + username on argv, password on stdin, prints the cookie
+  to stdout. Thanks @derkarnold.
 - **Multi-profile** — save / list / rename / export / import named
   VPN configs. Includes export to NetworkManager's `.nmconnection`
   format for the Ubuntu / GNOME VPN UI.

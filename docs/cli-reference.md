@@ -62,6 +62,11 @@ both override the XDG default for one invocation.
 --headless                 No browser, terminal-only authentication
 --browser BACKEND          qt | chrome | headless
 --browser-display-mode M   shown | hidden
+--chrome-channel CHANNEL   With --browser=chrome, use a system Chrome / Edge
+                           instead of Playwright's bundled Chromium.
+                           Values: chrome | chrome-beta | chrome-dev | chrome-canary |
+                                   msedge | msedge-beta | msedge-dev | msedge-canary
+                           Skips the ~150 MB `playwright install chromium` download.
 --window-size WxH          Browser window size (Qt only)
 --useragent STRING         Custom user-agent for the SAML browser
 ```
@@ -72,6 +77,11 @@ both override the XDG default for one invocation.
 -u, --user NAME            Authenticate as the given user
 --reset-credentials        Delete saved credentials from keyring and exit
 --auth-only                Friendly alias for --authenticate shell (auth, print cookie, exit)
+--auth-script PATH         External authentication script (replaces the built-in
+                           SAML form-driver). Receives [login_url, token_cookie_name,
+                           username] on argv with the password on stdin; must print
+                           the SSO token on stdout. See authentication.md for the
+                           contract.
 --cert FILE                Client certificate (PEM) — passed to openconnect as --certificate
 --cert-key FILE            Client certificate's private key (PEM) — passed as --sslkey
 ```
@@ -79,7 +89,8 @@ both override the XDG default for one invocation.
 ### TOTP providers
 
 ```
---totp-source SOURCE       local | 2fauth | bitwarden | 1password | pass | none
+--totp-source SOURCE       local | 2fauth | bitwarden | 1password | pass |
+                           keepassxc | prompt | none
 --no-totp                  Skip the TOTP prompt entirely (alias for --totp-source none)
 --2fauth-url URL
 --2fauth-token TOKEN
@@ -89,7 +100,15 @@ both override the XDG default for one invocation.
 --1password-vault VAULT
 --1password-account ACCT
 --pass-entry PATH
+--keepassxc-db PATH        Path to the .kdbx database file
+--keepassxc-entry NAME     Entry name (or full path) inside the database
+--keepassxc-keyfile PATH   Optional .kdbx key-file (in addition to the master password,
+                           which is read from $KEEPASSXC_DB_PASSWORD or via getpass)
 ```
+
+`--totp-source prompt` asks for the 6-digit code interactively at every
+connect and stores nothing — useful when you'd rather type the code from
+your phone authenticator than persist a secret on the machine.
 
 ### Reconnect
 
@@ -192,8 +211,9 @@ openconnect-saml profiles migrate [--apply]
 
 **`profiles set NAME FIELD VALUE`** — programmatic field editor. Allowed
 fields: `server`, `user_group`, `name`, `browser`, `notify`, `on_connect`,
-`on_disconnect`, `cert`, `cert_key`, `username`, `totp_source`. Booleans
-accept `true|false|yes|no|1|0`. Empty string clears optional fields.
+`on_disconnect`, `cert`, `cert_key`, `username`, `totp_source`,
+`auth_script`. Booleans accept `true|false|yes|no|1|0`. Empty string
+clears optional fields.
 
 **`profiles copy SRC DST`** duplicates an existing profile. The copy is
 independent of the source; mutating one doesn't affect the other.

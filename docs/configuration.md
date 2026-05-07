@@ -49,8 +49,8 @@ openconnect-saml profiles migrate --apply
 Current registered migrations:
 
 - Lift legacy `[default_profile]` into `[profiles.default]`
-- Drop unused `[2fauth]` / `[bitwarden]` / `[1password]` / `[pass]`
-  sections
+- Drop unused `[2fauth]` / `[bitwarden]` / `[1password]` / `[pass]` /
+  `[keepassxc]` sections
 - Bump `schema_version` to the latest value
 
 ## TOML structure
@@ -93,6 +93,11 @@ vault = "Engineering"
 
 [pass]
 entry = "vpn/work-totp"
+
+[keepassxc]
+database = "~/.keepass/secrets.kdbx"
+entry = "Work/VPN-TOTP"
+keyfile = ""    # optional .kdbx key-file (in addition to the master password)
 
 [kill_switch]
 enabled = false
@@ -157,13 +162,13 @@ openconnect-saml config import OTHER.toml --force   # overwrite conflicts
 - TOML syntax errors
 - Missing `server` on a profile
 - Unresolvable `active_profile`
-- Missing `[2fauth]` / `[bitwarden]` / `[1password]` / `[pass]`
-  sections referenced by a profile's `totp_source`
+- Missing `[2fauth]` / `[bitwarden]` / `[1password]` / `[pass]` /
+  `[keepassxc]` sections referenced by a profile's `totp_source`
 - Invalid CIDRs in `routes` / `no_routes`
 - Overly-permissive file modes (anything other than `0600`)
 - TOTP-provider binaries missing from `$PATH` (warns when a profile
-  uses `1password` / `bitwarden` / `pass` but the corresponding
-  `op` / `bw` / `pass` CLI isn't installed)
+  uses `1password` / `bitwarden` / `pass` / `keepassxc` but the
+  corresponding `op` / `bw` / `pass` / `keepassxc-cli` isn't installed)
 
 ### diff vs. import
 

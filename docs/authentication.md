@@ -314,11 +314,14 @@ Resolution order: CLI flag > per-profile field. If you have multiple
 VPNs each with its own client cert, the per-profile fields are the
 clean way to manage that.
 
-## External authentication script (`--auth-script`)
+## External authentication script
 
 When the built-in auto-flow can't drive your IdP — typically tenants
-with bespoke MFA flows, ADFS / WS-Trust federation, or in-house SSO
-gateways — you can hand off the SAML phase to your own script.
+with bespoke MFA flows, ADFS / WS-Trust federation that the
+experimental `_authenticate_via_ws_trust` doesn't reach, or
+in-house SSO gateways — you can hand off the SAML phase to your
+own script via `--auth-script PATH` (or the per-profile
+`auth_script` field).
 
 ```bash
 openconnect-saml connect work --auth-script /usr/local/bin/my-saml.sh

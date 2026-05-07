@@ -44,8 +44,9 @@ light up on Duo / Cisco prompts.
 
 ## Chrome / Chromium (Playwright)
 
-Visible Chromium window, native WebAuthn, recommended for unusual MFA
-flows where Qt struggles:
+Visible Chromium window, native WebAuthn (FIDO2 hardware keys work
+out of the box), recommended for unusual MFA flows where Qt struggles
+or for FIDO2-only tenants:
 
 ```bash
 openconnect-saml --server vpn.example.com --browser chrome
@@ -53,8 +54,29 @@ openconnect-saml connect work --browser chrome
 openconnect-saml --server vpn.example.com --browser chrome --browser-display-mode hidden
 ```
 
-Requires `pip install "openconnect-saml[chrome]"` and one-time
-`playwright install chromium`.
+Requires `pip install "openconnect-saml[chrome]"` (or AUR
+`python-playwright` — **not** `aur/playwright`, which is the
+Node.js library) and a one-time `playwright install chromium` to
+download the ~150 MB Chromium bundle.
+
+### Skipping the Playwright Chromium download
+
+If you already have Chrome / Edge installed system-wide, point
+Playwright at it via `--chrome-channel`:
+
+```bash
+openconnect-saml connect work --browser chrome --chrome-channel chrome
+# or msedge / chrome-beta / chrome-dev / chrome-canary / msedge-beta / …
+```
+
+Valid channels: `chrome`, `chrome-beta`, `chrome-dev`, `chrome-canary`,
+`msedge`, `msedge-beta`, `msedge-dev`, `msedge-canary`. Plain
+`chromium` is **not** a Playwright channel — Arch's stock
+`pacman -S chromium` users either install AUR `google-chrome`
+(then `--chrome-channel chrome`), or just run
+`playwright install chromium` once (it caches under
+`~/.cache/ms-playwright/` and never re-downloads). Full caveat in
+[authentication.md](authentication.md#saving-the-150-mb-chromium-download).
 
 ## Minimal profile GUI
 
