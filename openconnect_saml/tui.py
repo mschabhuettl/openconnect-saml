@@ -285,6 +285,7 @@ def _print_status_plain(status):
     if not status:
         print(disconnected_glyph)
         print("No active VPN connection found.")
+        print("Start a connection with: openconnect-saml connect <profile>")
         return
 
     print(connected_glyph)
@@ -292,7 +293,8 @@ def _print_status_plain(status):
     print(f"  Profile:      {status['profile']}")
     print(f"  Server:       {status['server']}")
     print(f"  User:         {status['user']}")
-    print(f"  Connected:    {status['uptime'] or 'N/A'}")
+    uptime = status["uptime"] or "N/A"
+    print(f"  Uptime:       {uptime}")
     print(f"  IP Address:   {status['ip']}")
     tx_str = _format_bytes(status["tx"])
     rx_str = _format_bytes(status["rx"])
@@ -303,7 +305,7 @@ def _print_status_plain(status):
         print(f"  Rate (↑/↓):   {tx_rate} / {rx_rate}")
     print(f"  Reconnects:   {status['reconnects']}")
     if status.get("kill_switch"):
-        print("  Kill-switch:  ACTIVE")
+        print("  Kill-switch:  ACTIVE — non-VPN traffic is blocked")
 
 
 def _print_status_rich(status):
@@ -320,6 +322,7 @@ def _print_status_rich(status):
     if not status:
         console.print("[bold red]❌ openconnect-saml — Disconnected[/]")
         console.print("No active VPN connection found.")
+        console.print("[dim]Start a connection with: openconnect-saml connect <profile>[/]")
         return
 
     console.print("[bold green]🔐 openconnect-saml — Connected[/]")
@@ -334,7 +337,7 @@ def _print_status_rich(status):
     table.add_row("Profile", status["profile"])
     table.add_row("Server", status["server"])
     table.add_row("User", status["user"])
-    table.add_row("Connected", status["uptime"] or "N/A")
+    table.add_row("Uptime", status["uptime"] or "N/A")
     table.add_row("IP Address", status["ip"])
     table.add_row("TX / RX", f"{tx_str} / {rx_str}")
     if status.get("tx_rate") is not None or status.get("rx_rate") is not None:
@@ -342,7 +345,7 @@ def _print_status_rich(status):
         table.add_row("Rate (↑/↓)", rate_str)
     table.add_row("Reconnects", str(status["reconnects"]))
     if status.get("kill_switch"):
-        table.add_row("Kill-switch", "[bold red]ACTIVE[/]")
+        table.add_row("Kill-switch", "[bold red]ACTIVE — non-VPN traffic is blocked[/]")
 
     console.print(table)
 
