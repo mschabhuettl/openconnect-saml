@@ -14,9 +14,20 @@ import os
 import select
 import subprocess  # nosec
 import sys
-import termios
 import time
-import tty
+
+# termios/tty are POSIX-only and absent on Windows.  Import them lazily so
+# that ``import openconnect_saml.interactive_tui`` succeeds on all platforms;
+# the actual TUI entrypoint will gate on _HAS_POSIX_TTY before use.
+try:
+    import termios as _termios
+    import tty as _tty
+
+    _HAS_POSIX_TTY = True
+except ImportError:  # pragma: no cover — only reachable on Windows
+    _termios = None  # type: ignore[assignment]
+    _tty = None  # type: ignore[assignment]
+    _HAS_POSIX_TTY = False
 
 from openconnect_saml import config, history
 from openconnect_saml.tui import _augment_with_rate, _collect_status, _format_bytes, _format_rate
@@ -265,6 +276,17 @@ class InteractiveTUI:
     # ------------------------------------------------------------ main
 
     def run(self) -> int:
+        if not _HAS_POSIX_TTY:
+            print(
+                "Error: The interactive TUI requires a POSIX terminal"
+                " (termios/tty not available on this platform).",
+                file=sys.stderr,
+            )
+            print(
+                "Use 'openconnect-saml status [--watch] [--json]' instead.",
+                file=sys.stderr,
+            )
+            return 1
         if not _has_rich():
             print(
                 "Error: the `rich` package is required for the interactive TUI.",
@@ -289,9 +311,9 @@ class InteractiveTUI:
         from rich.live import Live
 
         console = Console()
-        old_settings = termios.tcgetattr(sys.stdin.fileno())
+        old_settings = _termios.tcgetattr(sys.stdin.fileno())
         try:
-            tty.setcbreak(sys.stdin.fileno())
+            _tty.setcbreak(sys.stdin.fileno())
             with Live(console=console, screen=True, refresh_per_second=4) as live:
                 while True:
                     self._render(console)
@@ -319,7 +341,7 @@ class InteractiveTUI:
                     elif key == "s":
                         self.view = "main"
         finally:
-            termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, old_settings)
+            _termios.tcsetattr(sys.stdin.fileno(), _termios.TCSADRAIN, old_settings)
             if self.proc and self.proc.poll() is None:
                 # Don't kill the running VPN on quit; just detach.
                 pass
