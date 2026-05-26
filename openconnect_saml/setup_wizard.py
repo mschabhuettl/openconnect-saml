@@ -35,7 +35,7 @@ def _prompt(message: str, default: str = "", required: bool = False) -> str:
     if not value and default:
         return default
     if required and not value:
-        print("  This field is required.")
+        print(f"  This field is required — please enter a value for '{message}'.")
         return _prompt(message, default, required)
     return value
 
@@ -52,7 +52,7 @@ def _prompt_choice(message: str, choices: list[str], default: str = "") -> str:
     if not value and default:
         return default
     if value not in choices:
-        print(f"  Please choose one of: {choices_str}")
+        print(f"  Invalid choice '{value}'. Valid options are: {choices_str}")
         return _prompt_choice(message, choices, default)
     return value
 
@@ -157,6 +157,8 @@ def run_setup_wizard(advanced: bool = False) -> int:
     print()
     print("🔧 openconnect-saml Setup Wizard")
     print("=" * 40)
+    print("This wizard creates a VPN profile in your local config.")
+    print("Press Ctrl-C at any prompt to abort without saving.")
     print()
 
     if _maybe_offer_xml_import():
@@ -166,22 +168,43 @@ def run_setup_wizard(advanced: bool = False) -> int:
         return 0
 
     # 1. Server URL
-    server = _prompt("VPN server URL (e.g. vpn.example.com)", required=True)
+    print("Step 1/7 — VPN server")
+    server = _prompt("VPN server hostname or URL (e.g. vpn.example.com)", required=True)
+    # Strip leading scheme so we store a clean hostname/path
+    if server.startswith(("http://", "https://")):
+        from urllib.parse import urlparse
+
+        parsed = urlparse(server)
+        server = parsed.netloc + (parsed.path.rstrip("/") or "")
+        print(f"  Using: {server}")
 
     # 2. Username
-    username = _prompt("Username (e.g. user@domain.com)")
+    print()
+    print("Step 2/7 — Credentials")
+    username = _prompt("Username (e.g. user@domain.com, or leave blank to skip)")
 
     # 3. TOTP source
+    print()
+    print("Step 3/7 — Two-factor authentication (TOTP)")
+    print("  local      = app reads a TOTP secret stored in your keyring")
+    print("  2fauth     = 2FAuth self-hosted service")
+    print("  bitwarden  = Bitwarden password manager (requires 'bw' CLI)")
+    print("  1password  = 1Password (requires 'op' CLI)")
+    print("  pass       = pass password store with pass-otp extension")
+    print("  none       = no TOTP / handled by the SAML IdP")
     totp_source = _prompt_choice(
         "TOTP source",
         ["local", "2fauth", "bitwarden", "1password", "pass", "none"],
         default="local",
     )
 
-    # 4. 2FAuth config
+    # 4. TOTP provider details
+    print()
+    print("Step 4/7 — TOTP provider details")
+    if totp_source in ("local", "none"):
+        print(f"  No additional configuration needed for TOTP source '{totp_source}'.")
     twofauth_cfg = None
     if totp_source == "2fauth":
-        print()
         print("  2FAuth Configuration:")
         twofauth_url = _prompt("  2FAuth URL (e.g. https://2fauth.example.com)", required=True)
         twofauth_token = _prompt("  2FAuth Personal Access Token", required=True)
@@ -193,13 +216,14 @@ def run_setup_wizard(advanced: bool = False) -> int:
                 account_id=int(twofauth_account_id),
             )
         except ValueError:
-            print("  Error: Account ID must be a number.")
+            print(
+                f"  Error: Account ID must be a whole number (e.g. 42), got '{twofauth_account_id}'."
+            )
             return 1
 
     # 4b. Bitwarden config
     bitwarden_cfg = None
     if totp_source == "bitwarden":
-        print()
         print("  Bitwarden Configuration:")
         bw_item_id = _prompt("  Bitwarden item ID (UUID)", required=True)
         bitwarden_cfg = BitwardenConfig(item_id=bw_item_id)
@@ -207,7 +231,6 @@ def run_setup_wizard(advanced: bool = False) -> int:
     # 4c. 1Password config
     onepassword_cfg = None
     if totp_source == "1password":
-        print()
         print("  1Password Configuration (requires the 'op' CLI):")
         op_item = _prompt("  1Password item name or UUID", required=True)
         op_vault = _prompt("  Vault (optional)")
@@ -217,20 +240,39 @@ def run_setup_wizard(advanced: bool = False) -> int:
     # 4d. pass (password-store) config
     pass_cfg = None
     if totp_source == "pass":
-        print()
-        print("  pass Configuration (requires pass-otp):")
+        print("  pass Configuration (requires pass-otp extension):")
         pass_entry = _prompt("  pass entry path (e.g. work/vpn-totp)", required=True)
         pass_cfg = PassConfig(entry=pass_entry)
 
     # 5. Browser mode
+    print()
+    print("Step 5/7 — Browser mode")
+    print("  headless = Playwright-driven headless Chromium (recommended, ~150 MB download)")
+    print("  chrome   = Use an installed Chrome/Chromium via Playwright (no download)")
+    print("  qt       = Embedded Qt WebEngine browser (requires PyQt6-WebEngine)")
     browser_mode = _prompt_choice(
         "Browser mode",
         ["headless", "chrome", "qt"],
         default="headless",
     )
+    if browser_mode == "chrome":
+        import shutil
+
+        chrome_hint = (
+            shutil.which("chromium")
+            or shutil.which("google-chrome")
+            or shutil.which("google-chrome-stable")
+        )
+        if chrome_hint:
+            print(f"  Tip: found system browser at {chrome_hint}")
+            print(f"  Add --chrome-executable {chrome_hint} when connecting to use it.")
+        else:
+            print("  No system Chrome/Chromium found — Playwright will use its own Chromium.")
 
     # 6. Auto-reconnect
-    auto_reconnect = _prompt_yes_no("Enable auto-reconnect?", default=True)
+    print()
+    print("Step 6/7 — Connection behaviour")
+    auto_reconnect = _prompt_yes_no("Enable auto-reconnect on drop?", default=True)
 
     # 7. Notifications
     notifications = _prompt_yes_no("Enable desktop notifications?", default=False)
@@ -252,7 +294,11 @@ def run_setup_wizard(advanced: bool = False) -> int:
         enable_killswitch = _prompt_yes_no("  Enable persistent kill-switch?", default=False)
 
     # 8. Profile name
-    profile_name = _prompt("Profile name", default="default", required=True)
+    print()
+    print("Step 7/7 — Profile name")
+    profile_name = _prompt(
+        "Profile name (used on the command line)", default="default", required=True
+    )
 
     # Summary
     print()
