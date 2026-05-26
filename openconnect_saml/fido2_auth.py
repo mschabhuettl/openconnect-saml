@@ -247,13 +247,14 @@ def handle_fido2_challenge_headless(
     """
     import base64
 
-    challenge = base64.urlsafe_b64decode(challenge_data["challenge"] + "==")
+    raw_challenge = challenge_data["challenge"]
+    challenge = base64.urlsafe_b64decode(raw_challenge + "=" * (-len(raw_challenge) % 4))
     rp_id = challenge_data.get("rpId", "")
 
     credential_ids = None
     if "allowCredentials" in challenge_data:
         credential_ids = [
-            base64.urlsafe_b64decode(c["id"] + "==")
+            base64.urlsafe_b64decode(c["id"] + "=" * (-len(c["id"]) % 4))
             for c in challenge_data["allowCredentials"]
             if c.get("type") == "public-key"
         ]

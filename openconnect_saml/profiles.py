@@ -625,6 +625,11 @@ def _profile_to_nmconnection(name: str, prof) -> str:
     if creds is not None:
         username = getattr(creds, "username", "") or ""
 
+    # SEC-02: Strip newline characters to prevent NM connection-file injection.
+    # A username containing '\n' could inject extra INI sections/keys.
+    username = username.replace("\r", "").replace("\n", "")
+    user_group = user_group.replace("\r", "").replace("\n", "")
+
     gateway = server
     if "://" in gateway:
         gateway = gateway.split("://", 1)[1]
