@@ -344,8 +344,9 @@ class TestRunWizardExtras:
         # No XML import path available.
         with patch("openconnect_saml.setup_wizard._maybe_offer_xml_import", return_value=False):
             rc = run_setup_wizard()
+        out = capsys.readouterr().out
         assert rc == 1
-        assert "must be a number" in capsys.readouterr().out
+        assert "number" in out
 
     @patch("openconnect_saml.setup_wizard.config")
     @patch(

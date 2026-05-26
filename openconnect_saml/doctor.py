@@ -98,11 +98,12 @@ def _check_openconnect() -> CheckResult:
             STATUS_FAIL,
             "not found in PATH",
             hint=(
-                "Install openconnect:\n"
-                "  Debian/Ubuntu: apt install openconnect\n"
-                "  Arch:          pacman -S openconnect\n"
-                "  Fedora:        dnf install openconnect\n"
-                "  macOS:         brew install openconnect"
+                "Install openconnect, then re-run this tool:\n"
+                "  Debian/Ubuntu: sudo apt install openconnect\n"
+                "  Arch:          sudo pacman -S openconnect\n"
+                "  Fedora:        sudo dnf install openconnect\n"
+                "  macOS:         brew install openconnect\n"
+                "  Windows:       https://openconnect.gitlab.io/openconnect-gui/"
             ),
         )
     version = "unknown"
@@ -126,6 +127,70 @@ def _check_openconnect() -> CheckResult:
         STATUS_OK,
         path,
         details=[version] if version != "unknown" else [],
+    )
+
+
+def _check_system_browser() -> CheckResult:
+    """Detect installed Chrome/Chromium/Edge and suggest --chrome-executable if found."""
+    candidates = [
+        # Linux — common names
+        "google-chrome",
+        "google-chrome-stable",
+        "chromium",
+        "chromium-browser",
+        # macOS apps (via Homebrew shims or standard install)
+        "Google Chrome",
+        # Windows (shutil.which searches PATH)
+        "chrome",
+        # Microsoft Edge
+        "microsoft-edge",
+        "msedge",
+    ]
+    # Also probe well-known absolute paths on Linux/macOS
+    absolute_paths = [
+        "/usr/bin/google-chrome",
+        "/usr/bin/google-chrome-stable",
+        "/usr/bin/chromium",
+        "/usr/bin/chromium-browser",
+        "/snap/bin/chromium",
+        "/usr/bin/microsoft-edge",
+        # macOS
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "/Applications/Chromium.app/Contents/MacOS/Chromium",
+        "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+    ]
+
+    found_path: str | None = None
+    for name in candidates:
+        p = shutil.which(name)
+        if p:
+            found_path = p
+            break
+    if not found_path:
+        for p in absolute_paths:
+            if Path(p).exists():
+                found_path = p
+                break
+
+    if not found_path:
+        return CheckResult(
+            "System browser",
+            STATUS_SKIP,
+            "no Chrome/Chromium/Edge found in PATH",
+            hint=(
+                "If you have a system browser you can pass it directly:\n"
+                "  --browser chrome --chrome-executable /path/to/browser\n"
+                "This avoids the Playwright Chromium download (~150 MB)."
+            ),
+        )
+    return CheckResult(
+        "System browser",
+        STATUS_OK,
+        found_path,
+        hint=(
+            f"Use it instead of the Playwright download:\n"
+            f"  --browser chrome --chrome-executable {found_path}"
+        ),
     )
 
 
@@ -233,14 +298,30 @@ def _check_optional_deps() -> list[CheckResult]:
         (
             "GUI browser (PyQt6)",
             ["PyQt6", "PyQt6.QtWebEngineCore"],
-            "pip install 'openconnect-saml[gui]'",
+            (
+                "pip install 'openconnect-saml[gui]'\n"
+                "Note: FIDO2/hardware tokens require a system Chromium — use --browser chrome instead."
+            ),
         ),
         (
             "Chrome (Playwright)",
             ["playwright"],
-            "pip install 'openconnect-saml[chrome]' && playwright install chromium",
+            (
+                "pip install 'openconnect-saml[chrome]' && playwright install chromium\n"
+                "Or, if you already have Chrome/Chromium installed, skip the download:\n"
+                "  --browser chrome --chrome-executable /path/to/chrome"
+            ),
         ),
-        ("FIDO2/YubiKey", ["fido2"], "pip install 'openconnect-saml[fido2]'"),
+        (
+            "FIDO2/YubiKey",
+            ["fido2"],
+            (
+                "pip install 'openconnect-saml[fido2]'\n"
+                "Linux also needs libfido2: sudo apt install libfido2-1  (Debian/Ubuntu)\n"
+                "                          sudo pacman -S libfido2       (Arch)\n"
+                "                          sudo dnf install libfido2     (Fedora)"
+            ),
+        ),
         ("Status TUI (rich)", ["rich"], "pip install 'openconnect-saml[tui]'"),
     ]
     for label, modules, hint in groups:
@@ -256,7 +337,57 @@ def _check_optional_deps() -> list[CheckResult]:
             results.append(CheckResult(label, STATUS_OK, ", ".join(found)))
         else:
             results.append(CheckResult(label, STATUS_SKIP, "not installed", hint=hint))
+
+    # Separately check for the libfido2 system library (ctypes-based probe)
+    results.append(_check_libfido2())
     return results
+
+
+def _check_libfido2() -> CheckResult:
+    """Check whether libfido2 is loadable (needed for the fido2 Python package)."""
+    # Only meaningful when fido2 Python package is present.
+    try:
+        importlib.import_module("fido2")
+    except ImportError:
+        return CheckResult(
+            "libfido2 (system)",
+            STATUS_SKIP,
+            "fido2 Python package not installed",
+        )
+    # The fido2 package uses ctypes to load libfido2. Try to import the
+    # internal binding to verify the native library is available.
+    import contextlib
+
+    with contextlib.suppress(ImportError):
+        importlib.import_module("fido2._pyu2f.hid")
+    try:
+        import ctypes
+        import ctypes.util
+
+        lib_name = ctypes.util.find_library("fido2")
+        if lib_name:
+            return CheckResult("libfido2 (system)", STATUS_OK, lib_name)
+        # find_library failed — try loading by guessed names
+        for candidate in ("libfido2.so.1", "libfido2.so", "fido2"):
+            try:
+                ctypes.CDLL(candidate)
+                return CheckResult("libfido2 (system)", STATUS_OK, candidate)
+            except OSError:
+                pass
+        return CheckResult(
+            "libfido2 (system)",
+            STATUS_WARN,
+            "shared library not found",
+            hint=(
+                "Install the system library for FIDO2 hardware token support:\n"
+                "  Debian/Ubuntu: sudo apt install libfido2-1\n"
+                "  Arch:          sudo pacman -S libfido2\n"
+                "  Fedora:        sudo dnf install libfido2\n"
+                "  macOS:         brew install libfido2"
+            ),
+        )
+    except Exception:  # noqa: BLE001
+        return CheckResult("libfido2 (system)", STATUS_SKIP, "cannot probe")
 
 
 def _check_keyring_backend() -> CheckResult:
@@ -270,8 +401,14 @@ def _check_keyring_backend() -> CheckResult:
             return CheckResult(
                 "Keyring backend",
                 STATUS_WARN,
-                f"{module}.{name} (no secure backend available)",
-                hint="Install a backend: 'pip install keyring' or use dbus/libsecret on Linux",
+                f"{module}.{name} (no secure storage backend found)",
+                hint=(
+                    "Credentials cannot be stored securely without a keyring backend.\n"
+                    "  Linux (GNOME/KDE): install and start gnome-keyring or kwallet\n"
+                    "  Linux (headless):  pip install 'keyrings.alt'  (plain-text fallback)\n"
+                    "  macOS:             Keychain is built in — no action needed\n"
+                    "  Windows:           Windows Credential Manager is built in"
+                ),
             )
         return CheckResult("Keyring backend", STATUS_OK, f"{module}.{name}")
     except Exception as exc:
@@ -512,6 +649,7 @@ def run_all(server: str | None = None) -> list[CheckResult]:
     results.append(CheckResult("Platform", STATUS_OK, f"{platform.system()} {platform.release()}"))
     results.append(_check_python_version())
     results.append(_check_openconnect())
+    results.append(_check_system_browser())
     results.append(_check_sudo())
     results.append(_check_tun_device())
     results.extend(_check_python_deps())
