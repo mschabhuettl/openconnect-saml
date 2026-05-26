@@ -5,7 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.25.0] – 2026-05-26
+
+### Security
+
+- **Auth request/response bodies are no longer logged verbatim at
+  DEBUG.** `authenticator.py` logged the full SAML auth init/finish
+  bodies at DEBUG; the finish request embeds the SSO token and the
+  finish response carries the VPN **session token**, so running with
+  `--log-level DEBUG` (common when troubleshooting) wrote a replayable
+  credential to stderr / log files. Both steps now log only a
+  non-sensitive breadcrumb (HTTP status + byte size). Found by the
+  API/auth audit (SEC-01, HIGH).
 
 ### Added
 
@@ -24,11 +35,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (bash, zsh, fish) — `--chrome-channel` was previously missing from the
   completion scripts entirely.
 
+### Fixed
+
+- **Cross-platform robustness** — graceful degradation instead of
+  unhandled tracebacks when a platform binary is absent:
+  `killswitch` when `iptables` is missing; the `service` subcommand
+  when `systemctl` is missing (Windows / minimal containers); the
+  headless `--auth-script` when the script path doesn't exist; and
+  `run_openconnect` when the `openconnect` binary itself isn't on PATH
+  (clear message + exit code 20).
+- **`config import` now validates** the merged config before
+  overwriting the existing one (a comment promised this but the code
+  skipped it) — a corrupt import can no longer clobber a working config.
+- **NetworkManager export** strips newlines from `username` / `user_group`
+  so they can't inject arbitrary INI sections into the `.nmconnection`.
+- **`history` export** handles unwritable destinations with a clean
+  error + non-zero exit instead of an `OSError` traceback.
+- **FIDO2 base64url padding** made standards-correct
+  (`'=' * (-len(s) % 4)`) for all residue classes.
+- **`interactive_tui` no longer crashes on import on Windows** —
+  `termios`/`tty` are now lazy/guarded, with a clear "requires a POSIX
+  terminal" message and a pointer to `status [--watch] [--json]`.
+
+### Changed
+
+- **Clearer diagnostics & UX** — `doctor` detects a system browser and
+  suggests `--chrome-executable`, with sharper keyring / libfido2 /
+  openconnect install hints; `setup` wizard gained step labels, clearer
+  prompts and URL-scheme stripping; TUI status wording improved.
+
 ### Tests
 
-- 4 cases in `test_chrome_browser.py` (executable propagation, executable
-  wins over channel, missing-file fast-fail, default `None`) and 4 in
-  `test_cli_args.py` (flag parsing on legacy + `connect` subparser).
+- Test suite grew from 947 to 1082 cases; coverage 76.16 % → 79.36 %
+  (`authenticator.py` 59→89 %, `fido2_auth.py` 59→92 %), floor 73.
 
 ## [0.24.5] – 2026-05-06
 
