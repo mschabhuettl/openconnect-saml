@@ -93,10 +93,11 @@ class TestFindExecutable:
 
 
 class TestInstall:
+    @patch("openconnect_saml.service._ensure_systemd_available")
     @patch("subprocess.run")
     @patch("pathlib.Path.write_text")
     @patch("pathlib.Path.chmod")
-    def test_install_creates_unit(self, mock_chmod, mock_write, mock_run):
+    def test_install_creates_unit(self, mock_chmod, mock_write, mock_run, mock_ensure):
         from openconnect_saml.service import install
 
         mock_run.return_value = MagicMock(returncode=0)
@@ -108,9 +109,10 @@ class TestInstall:
         assert "vpn.example.com" in written_content
         assert "--user" in written_content
 
+    @patch("openconnect_saml.service._ensure_systemd_available")
     @patch("subprocess.run")
     @patch("pathlib.Path.write_text", side_effect=PermissionError("denied"))
-    def test_install_permission_error(self, mock_write, mock_run):
+    def test_install_permission_error(self, mock_write, mock_run, mock_ensure):
         from openconnect_saml.service import install
 
         result = install("vpn.example.com")
@@ -118,10 +120,11 @@ class TestInstall:
 
 
 class TestUninstall:
+    @patch("openconnect_saml.service._ensure_systemd_available")
     @patch("subprocess.run")
     @patch("pathlib.Path.exists", return_value=True)
     @patch("pathlib.Path.unlink")
-    def test_uninstall_removes_unit(self, mock_unlink, mock_exists, mock_run):
+    def test_uninstall_removes_unit(self, mock_unlink, mock_exists, mock_run, mock_ensure):
         from openconnect_saml.service import uninstall
 
         mock_run.return_value = MagicMock(returncode=0)
@@ -132,6 +135,7 @@ class TestUninstall:
 
     @patch("pathlib.Path.exists", return_value=False)
     def test_uninstall_nonexistent(self, mock_exists):
+        # Returns 1 before reaching _ensure_systemd_available() — no patch needed.
         from openconnect_saml.service import uninstall
 
         result = uninstall("vpn.example.com")
