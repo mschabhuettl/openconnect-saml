@@ -14,11 +14,25 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import importlib.util
 import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+# ---------------------------------------------------------------------------
+# Optional-extra guards — mirror the pattern in test_chrome_browser.py.
+# CI's [dev] job does NOT install [fido2] (or [chrome], [qt], etc.).
+# Any test that would exercise code paths only reachable when the extra IS
+# installed must either mock the import or be skipped when absent.
+# ---------------------------------------------------------------------------
+
+_HAS_FIDO2 = importlib.util.find_spec("fido2") is not None
+_skip_no_fido2 = pytest.mark.skipif(
+    not _HAS_FIDO2,
+    reason="python-fido2 not installed (needs [fido2] extra; CI [dev] job omits it)",
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -54,14 +68,31 @@ class TestFIDO2AuthenticatorAuthenticate:
 
         return mock_client, mock_result, mock_assertion
 
-    @patch("openconnect_saml.fido2_auth.FIDO2Authenticator.detect_device")
-    def test_authenticate_raises_when_no_device(self, mock_detect):
-        """authenticate() raises FIDO2AuthError when no device is present."""
+    def test_authenticate_raises_when_no_device(self):
+        """authenticate() raises FIDO2AuthError when no device is present.
+
+        The fido2 modules are mocked via sys.modules so this test runs in CI
+        where the [fido2] extra is not installed.
+        """
         from openconnect_saml.fido2_auth import FIDO2Authenticator, FIDO2AuthError
 
-        mock_detect.return_value = False
         auth = FIDO2Authenticator()
-        with pytest.raises(FIDO2AuthError, match="No FIDO2 security key detected"):
+        # detect_device is patched to return False; fido2 modules are stubbed
+        # so the import inside authenticate() succeeds in all environments.
+        with (
+            patch.dict(
+                "sys.modules",
+                {
+                    "fido2.client": MagicMock(Fido2Client=MagicMock(), UserInteraction=object),
+                    "fido2.webauthn": MagicMock(
+                        PublicKeyCredentialDescriptor=MagicMock(),
+                        PublicKeyCredentialType=MagicMock(PUBLIC_KEY="public-key"),
+                    ),
+                },
+            ),
+            patch.object(auth, "detect_device", return_value=False),
+            pytest.raises(FIDO2AuthError, match="No FIDO2 security key detected"),
+        ):
             auth.authenticate(challenge=b"test", rp_id="example.com")
 
     def test_authenticate_raises_on_import_error(self):
@@ -184,13 +215,27 @@ class TestFIDO2AuthenticatorAuthenticate:
         assert "allowCredentials" not in options_arg
 
     def test_authenticate_auto_detects_device(self):
-        """authenticate() calls detect_device() when _device is None."""
+        """authenticate() calls detect_device() when _device is None.
+
+        The fido2 modules are mocked via sys.modules so this test runs in CI
+        where the [fido2] extra is not installed.
+        """
         from openconnect_saml.fido2_auth import FIDO2Authenticator, FIDO2AuthError
 
         auth = FIDO2Authenticator()
-        assert auth._device is None  # no device set
+        assert auth._device is None  # no device pre-set → detect_device() must be called
 
         with (
+            patch.dict(
+                "sys.modules",
+                {
+                    "fido2.client": MagicMock(Fido2Client=MagicMock(), UserInteraction=object),
+                    "fido2.webauthn": MagicMock(
+                        PublicKeyCredentialDescriptor=MagicMock(),
+                        PublicKeyCredentialType=MagicMock(PUBLIC_KEY="public-key"),
+                    ),
+                },
+            ),
             patch.object(auth, "detect_device", return_value=False),
             pytest.raises(FIDO2AuthError, match="No FIDO2 security key"),
         ):
