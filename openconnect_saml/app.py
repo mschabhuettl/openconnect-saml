@@ -948,56 +948,70 @@ def run_openconnect(
     session_token = auth_info.session_token.encode("utf-8")
     logger.debug("Starting OpenConnect", command_line=command_line)
 
-    if detach:
-        # Detach from the controlling terminal so the openconnect process
-        # survives when openconnect-saml exits.
-        popen_kwargs: dict = {
-            "stdin": subprocess.PIPE,
-            "stdout": subprocess.DEVNULL,
-            "stderr": subprocess.DEVNULL,
-        }
-        if os.name != "nt":
-            popen_kwargs["start_new_session"] = True
-        proc = subprocess.Popen(command_line, **popen_kwargs)  # nosec
-        try:
+    # Spawning a missing ``openconnect`` (or doas/sudo) binary raises an
+    # unhandled FileNotFoundError. Catch it once for all spawn paths below
+    # and degrade to a clear, actionable message + exit code 20 (same code
+    # used above for "no superuser program found"). Mocked subprocess in
+    # tests never raises this, so behaviour there is unchanged.
+    try:
+        if detach:
+            # Detach from the controlling terminal so the openconnect process
+            # survives when openconnect-saml exits.
+            popen_kwargs: dict = {
+                "stdin": subprocess.PIPE,
+                "stdout": subprocess.DEVNULL,
+                "stderr": subprocess.DEVNULL,
+            }
+            if os.name != "nt":
+                popen_kwargs["start_new_session"] = True
+            proc = subprocess.Popen(command_line, **popen_kwargs)  # nosec
+            try:
+                proc.stdin.write(session_token)
+                proc.stdin.close()
+            except BrokenPipeError:
+                pass
+            if on_pid:
+                try:
+                    on_pid(proc.pid)
+                except Exception as exc:
+                    logger.warning("on_pid callback raised", error=str(exc))
+            if on_connect:
+                handle_connect(on_connect)
+            if wait_seconds and wait_seconds > 0:
+                _wait_for_tunnel(wait_seconds)
+            logger.info("openconnect detached", pid=proc.pid)
+            return 0
+
+        if on_connect:
+            proc = subprocess.Popen(command_line, stdin=subprocess.PIPE)  # nosec
             proc.stdin.write(session_token)
             proc.stdin.close()
-        except BrokenPipeError:
-            pass
-        if on_pid:
-            try:
-                on_pid(proc.pid)
-            except Exception as exc:
-                logger.warning("on_pid callback raised", error=str(exc))
-        if on_connect:
+            if on_pid:
+                try:
+                    on_pid(proc.pid)
+                except Exception as exc:
+                    logger.warning("on_pid callback raised", error=str(exc))
             handle_connect(on_connect)
-        if wait_seconds and wait_seconds > 0:
-            _wait_for_tunnel(wait_seconds)
-        logger.info("openconnect detached", pid=proc.pid)
-        return 0
+            return proc.wait()
 
-    if on_connect:
-        proc = subprocess.Popen(command_line, stdin=subprocess.PIPE)  # nosec
-        proc.stdin.write(session_token)
-        proc.stdin.close()
         if on_pid:
+            proc = subprocess.Popen(command_line, stdin=subprocess.PIPE)  # nosec
+            proc.stdin.write(session_token)
+            proc.stdin.close()
             try:
                 on_pid(proc.pid)
             except Exception as exc:
                 logger.warning("on_pid callback raised", error=str(exc))
-        handle_connect(on_connect)
-        return proc.wait()
-
-    if on_pid:
-        proc = subprocess.Popen(command_line, stdin=subprocess.PIPE)  # nosec
-        proc.stdin.write(session_token)
-        proc.stdin.close()
-        try:
-            on_pid(proc.pid)
-        except Exception as exc:
-            logger.warning("on_pid callback raised", error=str(exc))
-        return proc.wait()
-    return subprocess.run(command_line, input=session_token).returncode  # nosec
+            return proc.wait()
+        return subprocess.run(command_line, input=session_token).returncode  # nosec
+    except FileNotFoundError:
+        logger.error(
+            "Could not execute the VPN client — binary not found. Install "
+            "OpenConnect and ensure it is on your PATH (e.g. 'apt install "
+            "openconnect', 'brew install openconnect', 'pacman -S openconnect').",
+            command=command_line[0] if command_line else "openconnect",
+        )
+        return 20
 
 
 def _validate_hook_command(command):
