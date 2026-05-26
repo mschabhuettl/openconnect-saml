@@ -263,12 +263,16 @@ class KillSwitch:
 
     def _chain_exists(self, tool: str) -> bool:
         full_cmd = ([self._sudo] if self._sudo else []) + [tool, "-nL", CHAIN_NAME]
-        result = subprocess.run(  # nosec
-            full_cmd,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        try:
+            result = subprocess.run(  # nosec
+                full_cmd,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        except FileNotFoundError:
+            # iptables / ip6tables not installed on this system
+            return False
         return result.returncode == 0
 
     def _list_chain_rules(self, tool: str) -> list[str]:

@@ -216,3 +216,29 @@ class TestPfBackend:
         assert state["backend"] == "pf"
         assert state["active"] is False
         assert state["anchor"] == "openconnect-saml-killswitch"
+
+
+class TestChainExistsMissingBinary:
+    """_chain_exists() must return False (not raise) when iptables/ip6tables
+    is not installed — simulating a minimal container or Windows path."""
+
+    @patch("openconnect_saml.killswitch.platform.system", return_value="Linux")
+    def test_chain_exists_returns_false_on_file_not_found(self, mock_sys):
+        with patch(
+            "openconnect_saml.killswitch.subprocess.run",
+            side_effect=FileNotFoundError("iptables: command not found"),
+        ):
+            ks = KillSwitch(KillSwitchConfig(sudo=""))
+            # Must not raise FileNotFoundError — must return False gracefully
+            assert ks._chain_exists("iptables") is False
+
+    @patch("openconnect_saml.killswitch.platform.system", return_value="Linux")
+    def test_is_active_returns_false_when_iptables_missing(self, mock_sys):
+        """is_active() on Linux must degrade gracefully when iptables is absent."""
+        with patch(
+            "openconnect_saml.killswitch.subprocess.run",
+            side_effect=FileNotFoundError("iptables: command not found"),
+        ):
+            ks = KillSwitch(KillSwitchConfig(sudo=""))
+            # is_active() calls _chain_exists(); should not crash
+            assert ks.is_active() is False

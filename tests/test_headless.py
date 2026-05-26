@@ -541,3 +541,53 @@ class TestEntraRoutingHints:
         # And it should explicitly say no display is required, since
         # that's the user's whole concern.
         assert "DISPLAY" in _ENTRA_HEADLESS_HINT or "headless" in _ENTRA_HEADLESS_HINT
+
+
+class TestRunAuthScriptMissingBinary:
+    """_run_auth_script must raise HeadlessAuthError (not FileNotFoundError)
+    when the script path does not exist on the filesystem."""
+
+    def _make_auth(self):
+        creds = MagicMock()
+        creds.username = "user@example.com"
+        creds.password = "secret"
+        creds.totp = None
+        return HeadlessAuthenticator(
+            credentials=creds,
+            auth_script="/nonexistent/path/to/auth-script.sh",
+            timeout=5,
+        )
+
+    def test_missing_script_raises_headless_auth_error(self):
+        """FileNotFoundError from subprocess.run must be caught and re-raised
+        as HeadlessAuthError with a clear message."""
+        auth = self._make_auth()
+        with (
+            patch(
+                "openconnect_saml.headless.subprocess.run",
+                side_effect=FileNotFoundError(
+                    2, "No such file or directory", "/nonexistent/path/to/auth-script.sh"
+                ),
+            ),
+            pytest.raises(HeadlessAuthError, match="Auth script not found"),
+        ):
+            auth._run_auth_script(
+                "https://login.example.com/saml",
+                "https://vpn.example.com/acs",
+                "sso-token",
+            )
+
+    def test_missing_script_error_not_file_not_found_error(self):
+        """The raised exception must NOT be FileNotFoundError — callers expect
+        HeadlessAuthError from _run_auth_script."""
+        auth = self._make_auth()
+        with patch(
+            "openconnect_saml.headless.subprocess.run",
+            side_effect=FileNotFoundError("gone"),
+        ):
+            try:
+                auth._run_auth_script("https://x.example.com", "https://y.example.com", "tok")
+            except FileNotFoundError:
+                pytest.fail("FileNotFoundError leaked out of _run_auth_script")
+            except HeadlessAuthError:
+                pass  # correct

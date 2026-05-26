@@ -1229,6 +1229,11 @@ class HeadlessAuthenticator:
                 timeout=self.timeout,
                 env=env,
             )
+        except FileNotFoundError:
+            raise HeadlessAuthError(
+                f"Auth script not found: {script_path!r}. "
+                "Check the path and ensure the script is executable."
+            ) from None
         except subprocess.TimeoutExpired:
             raise HeadlessAuthError(f"Auth script timed out after {self.timeout}s") from None
 
