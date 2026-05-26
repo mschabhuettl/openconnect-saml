@@ -354,7 +354,14 @@ def _cmd_import(other_path: str, *, merge: bool = True, force: bool = False) -> 
 
     merged = _merge_dicts(current, incoming, force=force) if merge else incoming
 
-    # Validate the merged config before writing
+    # Validate the merged config before writing — prevent a corrupt import
+    # from silently overwriting the user's working config (BUG-01).
+    try:
+        config.Config.from_dict(config._rename_toml_to_py(merged))
+    except Exception as exc:  # noqa: BLE001
+        print(f"Error: merged config is invalid: {exc}", file=sys.stderr)
+        return 1
+
     target_path.parent.mkdir(parents=True, exist_ok=True)
     target_path.write_text(toml.dumps(merged))
     target_path.chmod(0o600)

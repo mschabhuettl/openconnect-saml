@@ -373,7 +373,11 @@ def _export_history(args) -> int:
     if fmt == "json":
         payload = json.dumps(entries, indent=2, default=str)
         if target and target != "-":
-            Path(target).write_text(payload)
+            try:
+                Path(target).write_text(payload)
+            except OSError as exc:
+                print(f"Error writing {target}: {exc}", file=sys.stderr)
+                return 1
             print(f"✓ Wrote {len(entries)} entries to {target}")
         else:
             print(payload)
@@ -388,7 +392,11 @@ def _export_history(args) -> int:
 
     text = buf.getvalue()
     if target and target != "-":
-        Path(target).write_text(text)
+        try:
+            Path(target).write_text(text)
+        except OSError as exc:
+            print(f"Error writing {target}: {exc}", file=sys.stderr)
+            return 1
         print(f"✓ Wrote {len(entries)} entries to {target}")
     else:
         sys.stdout.write(text)
