@@ -173,6 +173,70 @@ class TestKillSwitchState:
             assert r.status == doctor.STATUS_SKIP
 
 
+class TestCheckSystemBrowser:
+    def test_found_chromium(self):
+        with patch(
+            "openconnect_saml.doctor.shutil.which",
+            side_effect=lambda x: "/usr/bin/chromium" if x == "chromium" else None,
+        ):
+            r = doctor._check_system_browser()
+            assert r.status == doctor.STATUS_OK
+            assert "/usr/bin/chromium" in r.message
+            assert "--chrome-executable" in r.hint
+
+    def test_not_found_returns_skip(self):
+        with (
+            patch("openconnect_saml.doctor.shutil.which", return_value=None),
+            patch("openconnect_saml.doctor.Path") as mock_path,
+        ):
+            mock_path.return_value.exists.return_value = False
+            r = doctor._check_system_browser()
+            assert r.status == doctor.STATUS_SKIP
+
+    def test_hint_mentions_chrome_executable(self):
+        with patch("openconnect_saml.doctor.shutil.which", return_value=None):
+            r = doctor._check_system_browser()
+            assert "--chrome-executable" in r.hint
+
+
+class TestCheckLibfido2:
+    def test_skipped_when_fido2_not_installed(self):
+        import importlib
+
+        def fake_import(name):
+            if name == "fido2":
+                raise ImportError("no fido2")
+            return importlib.import_module(name)
+
+        with patch("openconnect_saml.doctor.importlib.import_module", side_effect=fake_import):
+            r = doctor._check_libfido2()
+            assert r.status == doctor.STATUS_SKIP
+
+    def test_ok_when_libfido2_found(self):
+        import ctypes.util as _ctypes_util
+
+        with (
+            patch("openconnect_saml.doctor.importlib.import_module", return_value=None),
+            patch.object(_ctypes_util, "find_library", return_value="libfido2.so.1"),
+        ):
+            r = doctor._check_libfido2()
+            assert r.status == doctor.STATUS_OK
+            assert "libfido2" in r.message
+
+    def test_warn_when_libfido2_missing(self):
+        import ctypes as _ctypes
+        import ctypes.util as _ctypes_util
+
+        with (
+            patch("openconnect_saml.doctor.importlib.import_module", return_value=None),
+            patch.object(_ctypes_util, "find_library", return_value=None),
+            patch.object(_ctypes, "CDLL", side_effect=OSError("not found")),
+        ):
+            r = doctor._check_libfido2()
+            assert r.status == doctor.STATUS_WARN
+            assert "apt install" in r.hint or "pacman" in r.hint
+
+
 class TestHandleDoctor:
     def test_run_returns_int(self, capsys):
         class Args:
