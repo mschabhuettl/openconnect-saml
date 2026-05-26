@@ -135,6 +135,86 @@ class TestChromeBrowser:
 
         asyncio.run(_test())
 
+    def test_init_executable_path(self):
+        from openconnect_saml.browser.chrome import ChromeBrowser
+
+        browser = ChromeBrowser(executable_path="/usr/bin/chromium")
+        assert browser.executable_path == "/usr/bin/chromium"
+        # Default stays None so we never accidentally pin a binary.
+        assert ChromeBrowser().executable_path is None
+
+    @_skip_no_playwright
+    def test_executable_path_propagates_to_launch_args(self, tmp_path):
+        """When ``executable_path`` is set, Playwright's launch() must
+        receive it so a plain distro chromium can be driven directly (#39)."""
+        from openconnect_saml.browser.chrome import ChromeBrowser
+
+        fake_bin = tmp_path / "chromium"
+        fake_bin.write_text("#!/bin/sh\n")
+
+        async def _test():
+            browser = ChromeBrowser(executable_path=str(fake_bin))
+
+            mock_chromium = MagicMock()
+            mock_chromium.launch = AsyncMock()
+            mock_pw = MagicMock()
+            mock_pw.chromium = mock_chromium
+            mock_pw.stop = AsyncMock()
+            mock_async_pw = MagicMock()
+            mock_async_pw.start = AsyncMock(return_value=mock_pw)
+
+            with patch("playwright.async_api.async_playwright", return_value=mock_async_pw):
+                await browser.spawn()
+
+            launch_kwargs = mock_chromium.launch.call_args.kwargs
+            assert launch_kwargs.get("executable_path") == str(fake_bin)
+
+        asyncio.run(_test())
+
+    @_skip_no_playwright
+    def test_executable_path_wins_over_channel(self, tmp_path):
+        """executable_path and channel are mutually exclusive in Playwright;
+        an explicit executable must win and channel must be dropped."""
+        from openconnect_saml.browser.chrome import ChromeBrowser
+
+        fake_bin = tmp_path / "chromium"
+        fake_bin.write_text("#!/bin/sh\n")
+
+        async def _test():
+            browser = ChromeBrowser(executable_path=str(fake_bin), channel="chrome")
+
+            mock_chromium = MagicMock()
+            mock_chromium.launch = AsyncMock()
+            mock_pw = MagicMock()
+            mock_pw.chromium = mock_chromium
+            mock_pw.stop = AsyncMock()
+            mock_async_pw = MagicMock()
+            mock_async_pw.start = AsyncMock(return_value=mock_pw)
+
+            with patch("playwright.async_api.async_playwright", return_value=mock_async_pw):
+                await browser.spawn()
+
+            launch_kwargs = mock_chromium.launch.call_args.kwargs
+            assert launch_kwargs.get("executable_path") == str(fake_bin)
+            assert "channel" not in launch_kwargs
+
+        asyncio.run(_test())
+
+    @_skip_no_playwright
+    def test_executable_path_missing_file_raises(self):
+        """A non-existent --chrome-executable path fails early with a clear
+        message instead of Playwright's denser error."""
+        from openconnect_saml.browser.chrome import ChromeBrowser
+
+        async def _test():
+            browser = ChromeBrowser(executable_path="/no/such/chromium-binary")
+            with pytest.raises(RuntimeError, match="does not exist"):
+                await browser.spawn()
+            # No driver process should have been left running.
+            assert browser._playwright is None
+
+        asyncio.run(_test())
+
     def test_spawn_without_playwright_raises(self):
         """Spawn raises ImportError when playwright is not installed."""
         from openconnect_saml.browser.chrome import ChromeBrowser

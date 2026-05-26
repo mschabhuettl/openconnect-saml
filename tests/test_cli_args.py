@@ -16,6 +16,28 @@ def main_parser():
     return _create_argparser()
 
 
+class TestChromeFlags:
+    def test_chrome_executable_default_none(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com"])
+        assert args.chrome_executable is None
+
+    def test_chrome_executable_parsed(self, parser):
+        args = parser.parse_args(
+            ["-s", "vpn.example.com", "--chrome-executable", "/usr/bin/chromium"]
+        )
+        assert args.chrome_executable == "/usr/bin/chromium"
+
+    def test_chrome_channel_parsed(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com", "--chrome-channel", "msedge"])
+        assert args.chrome_channel == "msedge"
+
+    def test_chrome_executable_on_connect_subcommand(self, main_parser):
+        args = main_parser.parse_args(
+            ["connect", "-s", "vpn.example.com", "--chrome-executable", "/opt/chromium"]
+        )
+        assert args.chrome_executable == "/opt/chromium"
+
+
 class TestTotpFlags:
     def test_totp_source_none_accepted(self, parser):
         args = parser.parse_args(["-s", "vpn.example.com", "--totp-source", "none"])

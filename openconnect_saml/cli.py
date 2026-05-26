@@ -106,6 +106,18 @@ def _add_connection_args(parser):
         ),
         default=None,
     )
+    parser.add_argument(
+        "--chrome-executable",
+        help=(
+            "When --browser=chrome, drive a specific installed Chromium / Chrome / "
+            "Edge binary at this path (e.g. /usr/bin/chromium) instead of "
+            "downloading Playwright's bundled Chromium. Use this for a plain distro "
+            "'chromium' that --chrome-channel cannot select. Takes precedence over "
+            "--chrome-channel if both are given."
+        ),
+        metavar="PATH",
+        default=None,
+    )
     parser.add_argument("--on-connect", help="Command to run after VPN connects", default="")
     parser.add_argument("--on-disconnect", help="Command to run when disconnecting", default="")
     parser.add_argument(

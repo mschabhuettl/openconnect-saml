@@ -83,6 +83,14 @@ class ChromeBrowser:
         ``msedge-dev``, ``msedge-canary``. When ``None`` (default),
         Playwright uses its bundled Chromium (the ~150 MB download
         installed via ``playwright install chromium``).
+    executable_path : str or None
+        Absolute path to a Chromium/Chrome/Edge binary to drive directly
+        (Playwright ``executable_path=``). Lets users with a system
+        ``chromium`` (e.g. ``/usr/bin/chromium``) skip both the bundled
+        Chromium download and the channel mechanism — ``channel`` has no
+        ``chromium`` value, so a plain distro ``chromium`` can only be
+        reached this way (#39, #24). Takes precedence over ``channel``
+        when both are given.
     """
 
     def __init__(
@@ -91,11 +99,13 @@ class ChromeBrowser:
         proxy: str | None = None,
         timeout: int = 60_000,
         channel: str | None = None,
+        executable_path: str | None = None,
     ):
         self.headless = headless
         self.proxy = proxy
         self.timeout = timeout
         self.channel = channel
+        self.executable_path = executable_path
         self._playwright = None
         self._browser = None
         self._context = None
@@ -117,6 +127,18 @@ class ChromeBrowser:
                 "Then run: playwright install chromium"
             ) from exc
 
+        if self.executable_path:
+            # Fail early with an actionable message rather than letting
+            # Playwright raise its denser "Executable doesn't exist" later.
+            from pathlib import Path
+
+            if not Path(self.executable_path).is_file():
+                raise RuntimeError(
+                    f"--chrome-executable path does not exist: {self.executable_path}\n"
+                    "Point it at an installed Chromium/Chrome/Edge binary, "
+                    "e.g. /usr/bin/chromium or /usr/bin/google-chrome-stable."
+                )
+
         self._playwright = await async_playwright().start()
 
         launch_args = {
@@ -125,7 +147,22 @@ class ChromeBrowser:
         }
         if self.proxy:
             launch_args["proxy"] = {"server": self.proxy}
-        if self.channel:
+        if self.executable_path:
+            # Drive a specific binary directly. This is the only way to use
+            # a plain distro ``chromium`` (Playwright has no ``chromium``
+            # channel) without the ~150 MB bundled-Chromium download (#39).
+            # ``executable_path`` and ``channel`` are mutually exclusive in
+            # Playwright, so an explicit executable wins and channel is
+            # ignored (with a warning if the user set both).
+            launch_args["executable_path"] = self.executable_path
+            if self.channel:
+                logger.warning(
+                    "Both --chrome-executable and --chrome-channel set; "
+                    "using the executable and ignoring the channel.",
+                    executable_path=self.executable_path,
+                    channel=self.channel,
+                )
+        elif self.channel:
             # Use a system-installed Chrome / Edge instead of the
             # Playwright-bundled Chromium. Saves the ~150 MB download
             # if the user already has Chrome/Edge installed locally.
@@ -152,9 +189,13 @@ class ChromeBrowser:
             msg = str(exc).lower()
             if "executable" in msg or "browsertype" in msg or "doesn't exist" in msg:
                 raise RuntimeError(
-                    "Chromium isn't available to Playwright. "
-                    "Run `playwright install chromium` (one-off; downloads "
-                    "the ~150 MB browser bundle into your virtualenv)."
+                    "Chromium isn't available to Playwright. Either:\n"
+                    "  • run `playwright install chromium` (one-off; downloads the "
+                    "~150 MB bundle into your virtualenv), or\n"
+                    "  • point at an already-installed browser with "
+                    "`--chrome-executable /path/to/chromium` (e.g. /usr/bin/chromium), or\n"
+                    "  • use `--chrome-channel chrome|msedge` if you have Google "
+                    "Chrome / Microsoft Edge installed."
                 ) from exc
             raise
         self._context = await self._browser.new_context(
