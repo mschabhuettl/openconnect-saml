@@ -253,19 +253,38 @@ Playwright-bundled Chromium download entirely.
 
 > **Caveat for plain Chromium installs (e.g. Arch's `pacman -S
 > chromium`):** Playwright doesn't expose a `chromium` channel — only
-> Google Chrome and Microsoft Edge are recognised. If you have
-> Arch's stock Chromium installed and want to skip the Playwright
-> download, you have two options:
+> Google Chrome and Microsoft Edge are recognised. So `--chrome-channel`
+> can't select a stock distro `chromium`. For that case use
+> `--chrome-executable` instead (below).
+
+### Driving a specific browser binary with `--chrome-executable`
+
+When you have a browser installed that `--chrome-channel` can't reach —
+most commonly a distro `chromium` (`/usr/bin/chromium`) — point
+Playwright straight at the binary:
+
+```sh
+openconnect-saml connect <profile> --browser chrome --chrome-executable /usr/bin/chromium
+```
+
+This skips the ~150 MB Playwright-bundled Chromium download entirely and
+works with any Chromium/Chrome/Edge build on disk. It's also the
+recommended path for **FIDO2 / hardware-key MFA** on systems where
+`--browser qt` can't drive WebUSB (see #24): a real system Chromium ships
+WebUSB enabled, so the security key blinks at the DUO prompt.
+
+`--chrome-executable` takes precedence over `--chrome-channel` if both are
+given. The path is checked up front, so a typo fails fast with a clear
+message instead of a dense Playwright traceback.
+
+> **Which to use:**
 >
-> 1. Install `google-chrome` from the AUR (`yay -S google-chrome`),
->    then `--chrome-channel chrome` will pick it up.
-> 2. Just run `playwright install chromium` once — it caches under
->    `~/.cache/ms-playwright/` and never re-downloads. The 150 MB is
->    a one-off.
->
-> A future `--chrome-executable PATH` flag would let users point
-> Playwright directly at `/usr/bin/chromium`. Tracked as a follow-up;
-> not in v0.24.x.
+> - Have Google Chrome / Edge? → `--chrome-channel chrome` (or `msedge`).
+> - Have a distro `chromium` or any other Chromium build? →
+>   `--chrome-executable /usr/bin/chromium`.
+> - Have neither and don't mind the one-off download? → plain
+>   `--browser chrome` (runs `playwright install chromium`, caches under
+>   `~/.cache/ms-playwright/`, never re-downloads).
 
 ## Skipping prompts
 

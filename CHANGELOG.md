@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`--chrome-executable PATH`** — drive a specific installed
+  Chromium / Chrome / Edge binary with `--browser chrome` instead of
+  downloading Playwright's ~150 MB bundled Chromium. This is the only
+  way to use a plain distro `chromium` (e.g. `/usr/bin/chromium`),
+  because Playwright has no `chromium` *channel* — `--chrome-channel`
+  can only select Google Chrome / Edge. Also the practical path for
+  FIDO2 hardware-key MFA on systems where `--browser qt` can't drive
+  WebUSB: a real system Chromium ships WebUSB enabled. Closes #39 and
+  resolves the last actionable part of #24. Takes precedence over
+  `--chrome-channel`; the path is validated up front with an actionable
+  error instead of a dense Playwright traceback.
+- **Shell completion for `--chrome-channel` and `--chrome-executable`**
+  (bash, zsh, fish) — `--chrome-channel` was previously missing from the
+  completion scripts entirely.
+
+### Tests
+
+- 4 cases in `test_chrome_browser.py` (executable propagation, executable
+  wins over channel, missing-file fast-fail, default `None`) and 4 in
+  `test_cli_args.py` (flag parsing on legacy + `connect` subparser).
+
 ## [0.24.5] – 2026-05-06
 
 ### Added

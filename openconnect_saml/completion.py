@@ -54,7 +54,8 @@ _openconnect_saml() {
     local groups_actions="list add remove connect disconnect"
     local completion_shells="bash zsh fish install"
     local connect_flags="--server --proxy --headless --browser --authgroup --usergroup
-        --authenticate --browser-display-mode --on-connect --on-disconnect
+        --authenticate --browser-display-mode --chrome-channel --chrome-executable
+        --on-connect --on-disconnect
         --ac-version --log-level --user --reset-credentials --totp-source
         --2fauth-url --2fauth-token --2fauth-account-id --reconnect
         --max-retries --no-sudo --csd-wrapper --ssl-legacy --timeout
@@ -171,6 +172,8 @@ _openconnect_saml() {
         '--proxy[Use proxy]:proxy:'
         '--headless[No GUI]'
         '--browser[Browser backend]:backend:(qt chrome headless)'
+        '--chrome-channel[System Chrome/Edge channel for --browser chrome]:channel:(chrome chrome-beta chrome-dev chrome-canary msedge msedge-beta msedge-dev msedge-canary)'
+        '--chrome-executable[Path to a Chromium/Chrome/Edge binary for --browser chrome]:path:_files'
         '(-u --user)'{-u,--user}'[Username]:user:'
         '--reconnect[Auto-reconnect]'
         '--max-retries[Max retries]:retries:'
@@ -258,6 +261,8 @@ complete -c openconnect-saml -n "__fish_seen_subcommand_from connect" -s s -l se
 complete -c openconnect-saml -n "__fish_seen_subcommand_from connect" -l proxy -d "Proxy server" -x
 complete -c openconnect-saml -n "__fish_seen_subcommand_from connect" -l headless -d "No GUI"
 complete -c openconnect-saml -n "__fish_seen_subcommand_from connect" -l browser -d "Browser" -xa "qt chrome headless"
+complete -c openconnect-saml -n "__fish_seen_subcommand_from connect" -l chrome-channel -d "System Chrome/Edge channel" -xa "chrome chrome-beta chrome-dev chrome-canary msedge msedge-beta msedge-dev msedge-canary"
+complete -c openconnect-saml -n "__fish_seen_subcommand_from connect" -l chrome-executable -d "Path to Chromium/Chrome/Edge binary" -r -F
 complete -c openconnect-saml -n "__fish_seen_subcommand_from connect" -s u -l user -d "Username" -x
 complete -c openconnect-saml -n "__fish_seen_subcommand_from connect" -l reconnect -d "Auto-reconnect"
 complete -c openconnect-saml -n "__fish_seen_subcommand_from connect" -l totp-source -d "TOTP source" -xa "local 2fauth"
