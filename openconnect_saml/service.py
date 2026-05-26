@@ -22,6 +22,24 @@ USER_UNIT_DIR = Path.home() / ".config" / "systemd" / "user"
 UNIT_PREFIX = "openconnect-saml"
 
 
+class ServiceNotAvailableError(Exception):
+    """Raised when systemd (systemctl/journalctl) is not available on this platform."""
+
+
+def _ensure_systemd_available() -> None:
+    """Raise ServiceNotAvailableError when systemctl is not found in PATH.
+
+    This guards all service functions from crashing with an unhandled
+    FileNotFoundError on Windows or on minimal Linux containers that
+    don't have systemd installed.
+    """
+    if not shutil.which("systemctl"):
+        raise ServiceNotAvailableError(
+            "systemctl not found. The 'service' subcommand requires systemd "
+            "(Linux only). It is not available on this platform."
+        )
+
+
 def _unit_dir(user_mode: bool) -> Path:
     return USER_UNIT_DIR if user_mode else UNIT_DIR
 
@@ -145,6 +163,7 @@ def install(
         user_mode=user_mode,
     )
 
+    _ensure_systemd_available()
     logger.info("Installing systemd unit", unit=unit_name, path=str(unit_path), user_mode=user_mode)
 
     try:
@@ -197,6 +216,7 @@ def uninstall(server: str, user_mode: bool = False) -> int:
         logger.error("Unit file not found", path=str(unit_path))
         return 1
 
+    _ensure_systemd_available()
     logger.info("Uninstalling systemd unit", unit=unit_name, user_mode=user_mode)
 
     sysctl = _systemctl_args(user_mode)
@@ -217,6 +237,7 @@ def uninstall(server: str, user_mode: bool = False) -> int:
 
 def start(server: str, user_mode: bool = False) -> int:
     """Start the systemd unit for the given server."""
+    _ensure_systemd_available()
     user_mode = _resolve_unit_mode(server, user_mode)
     unit_name = _unit_name(server)
     result = subprocess.run([*_systemctl_args(user_mode), "start", unit_name])  # nosec
@@ -229,6 +250,7 @@ def start(server: str, user_mode: bool = False) -> int:
 
 def stop(server: str, user_mode: bool = False) -> int:
     """Stop the systemd unit for the given server."""
+    _ensure_systemd_available()
     user_mode = _resolve_unit_mode(server, user_mode)
     unit_name = _unit_name(server)
     result = subprocess.run([*_systemctl_args(user_mode), "stop", unit_name])  # nosec
@@ -241,6 +263,7 @@ def stop(server: str, user_mode: bool = False) -> int:
 
 def status(server: str | None = None, user_mode: bool = False) -> int:
     """Show status of the systemd unit(s)."""
+    _ensure_systemd_available()
     if server:
         user_mode = _resolve_unit_mode(server, user_mode)
         unit_name = _unit_name(server)
@@ -261,6 +284,7 @@ def status(server: str | None = None, user_mode: bool = False) -> int:
 
 def logs(server: str | None = None, follow: bool = False, user_mode: bool = False) -> int:
     """Show logs for the systemd unit(s)."""
+    _ensure_systemd_available()
     if server:
         user_mode = _resolve_unit_mode(server, user_mode)
     cmd = ["journalctl", "--no-pager", "-n", "100"]
@@ -281,40 +305,44 @@ def handle_service_command(args) -> int:
     action = args.service_action
     user_mode = bool(getattr(args, "user_mode", False))
 
-    if action == "install":
-        if not args.server:
-            print("Error: --server is required for install")
+    try:
+        if action == "install":
+            if not args.server:
+                print("Error: --server is required for install")
+                return 1
+            return install(
+                server=args.server,
+                user=getattr(args, "user", None),
+                browser=getattr(args, "browser", "headless"),
+                max_retries=getattr(args, "max_retries", None),
+                user_mode=user_mode,
+            )
+        elif action == "uninstall":
+            if not args.server:
+                print("Error: --server is required for uninstall")
+                return 1
+            return uninstall(args.server, user_mode=user_mode)
+        elif action == "start":
+            if not args.server:
+                print("Error: --server is required for start")
+                return 1
+            return start(args.server, user_mode=user_mode)
+        elif action == "stop":
+            if not args.server:
+                print("Error: --server is required for stop")
+                return 1
+            return stop(args.server, user_mode=user_mode)
+        elif action == "status":
+            return status(getattr(args, "server", None), user_mode=user_mode)
+        elif action == "logs":
+            return logs(
+                server=getattr(args, "server", None),
+                follow=getattr(args, "follow", False),
+                user_mode=user_mode,
+            )
+        else:
+            print(f"Unknown service action: {action}")
             return 1
-        return install(
-            server=args.server,
-            user=getattr(args, "user", None),
-            browser=getattr(args, "browser", "headless"),
-            max_retries=getattr(args, "max_retries", None),
-            user_mode=user_mode,
-        )
-    elif action == "uninstall":
-        if not args.server:
-            print("Error: --server is required for uninstall")
-            return 1
-        return uninstall(args.server, user_mode=user_mode)
-    elif action == "start":
-        if not args.server:
-            print("Error: --server is required for start")
-            return 1
-        return start(args.server, user_mode=user_mode)
-    elif action == "stop":
-        if not args.server:
-            print("Error: --server is required for stop")
-            return 1
-        return stop(args.server, user_mode=user_mode)
-    elif action == "status":
-        return status(getattr(args, "server", None), user_mode=user_mode)
-    elif action == "logs":
-        return logs(
-            server=getattr(args, "server", None),
-            follow=getattr(args, "follow", False),
-            user_mode=user_mode,
-        )
-    else:
-        print(f"Unknown service action: {action}")
-        return 1
+    except ServiceNotAvailableError as exc:
+        print(f"Error: {exc}")
+        return 2

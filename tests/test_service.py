@@ -5,8 +5,12 @@ from __future__ import annotations
 import argparse
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from openconnect_saml.service import (
     UNIT_PREFIX,
+    ServiceNotAvailableError,
+    _ensure_systemd_available,
     _find_executable,
     _unit_name,
     generate_unit,
@@ -89,10 +93,11 @@ class TestFindExecutable:
 
 
 class TestInstall:
+    @patch("openconnect_saml.service._ensure_systemd_available")
     @patch("subprocess.run")
     @patch("pathlib.Path.write_text")
     @patch("pathlib.Path.chmod")
-    def test_install_creates_unit(self, mock_chmod, mock_write, mock_run):
+    def test_install_creates_unit(self, mock_chmod, mock_write, mock_run, mock_ensure):
         from openconnect_saml.service import install
 
         mock_run.return_value = MagicMock(returncode=0)
@@ -104,9 +109,10 @@ class TestInstall:
         assert "vpn.example.com" in written_content
         assert "--user" in written_content
 
+    @patch("openconnect_saml.service._ensure_systemd_available")
     @patch("subprocess.run")
     @patch("pathlib.Path.write_text", side_effect=PermissionError("denied"))
-    def test_install_permission_error(self, mock_write, mock_run):
+    def test_install_permission_error(self, mock_write, mock_run, mock_ensure):
         from openconnect_saml.service import install
 
         result = install("vpn.example.com")
@@ -114,10 +120,11 @@ class TestInstall:
 
 
 class TestUninstall:
+    @patch("openconnect_saml.service._ensure_systemd_available")
     @patch("subprocess.run")
     @patch("pathlib.Path.exists", return_value=True)
     @patch("pathlib.Path.unlink")
-    def test_uninstall_removes_unit(self, mock_unlink, mock_exists, mock_run):
+    def test_uninstall_removes_unit(self, mock_unlink, mock_exists, mock_run, mock_ensure):
         from openconnect_saml.service import uninstall
 
         mock_run.return_value = MagicMock(returncode=0)
@@ -128,6 +135,7 @@ class TestUninstall:
 
     @patch("pathlib.Path.exists", return_value=False)
     def test_uninstall_nonexistent(self, mock_exists):
+        # Returns 1 before reaching _ensure_systemd_available() — no patch needed.
         from openconnect_saml.service import uninstall
 
         result = uninstall("vpn.example.com")
@@ -171,3 +179,82 @@ class TestHandleServiceCommand:
         result = handle_service_command(args)
         assert result == 0
         mock_logs.assert_called_once_with(server=None, follow=True, user_mode=False)
+
+
+class TestEnsureSystemdAvailable:
+    """_ensure_systemd_available() must raise ServiceNotAvailableError when
+    systemctl is absent — this covers the missing-binary case on Windows and
+    on minimal containers."""
+
+    @patch("openconnect_saml.service.shutil.which", return_value=None)
+    def test_raises_when_systemctl_missing(self, mock_which):
+        with pytest.raises(ServiceNotAvailableError, match="systemctl not found"):
+            _ensure_systemd_available()
+        mock_which.assert_called_once_with("systemctl")
+
+    @patch("openconnect_saml.service.shutil.which", return_value="/usr/bin/systemctl")
+    def test_passes_when_systemctl_present(self, mock_which):
+        # Must not raise.
+        _ensure_systemd_available()
+
+
+class TestSystemdMissingBinaryDegradation:
+    """Public functions must degrade gracefully (ServiceNotAvailableError, not
+    FileNotFoundError) when systemctl is absent."""
+
+    def _make_args(self, **kwargs):
+        defaults = {
+            "service_action": "status",
+            "server": "vpn.example.com",
+            "user": None,
+            "browser": "headless",
+            "max_retries": None,
+            "follow": False,
+            "user_mode": False,
+        }
+        defaults.update(kwargs)
+        return argparse.Namespace(**defaults)
+
+    @patch("openconnect_saml.service.shutil.which", return_value=None)
+    def test_install_raises_service_not_available(self, mock_which):
+        from openconnect_saml.service import install
+
+        with pytest.raises(ServiceNotAvailableError):
+            install("vpn.example.com")
+
+    @patch("openconnect_saml.service.shutil.which", return_value=None)
+    def test_start_raises_service_not_available(self, mock_which):
+        from openconnect_saml.service import start
+
+        with pytest.raises(ServiceNotAvailableError):
+            start("vpn.example.com")
+
+    @patch("openconnect_saml.service.shutil.which", return_value=None)
+    def test_stop_raises_service_not_available(self, mock_which):
+        from openconnect_saml.service import stop
+
+        with pytest.raises(ServiceNotAvailableError):
+            stop("vpn.example.com")
+
+    @patch("openconnect_saml.service.shutil.which", return_value=None)
+    def test_status_raises_service_not_available(self, mock_which):
+        from openconnect_saml.service import status
+
+        with pytest.raises(ServiceNotAvailableError):
+            status("vpn.example.com")
+
+    @patch("openconnect_saml.service.shutil.which", return_value=None)
+    def test_logs_raises_service_not_available(self, mock_which):
+        from openconnect_saml.service import logs
+
+        with pytest.raises(ServiceNotAvailableError):
+            logs("vpn.example.com")
+
+    @patch("openconnect_saml.service.shutil.which", return_value=None)
+    def test_handle_service_command_returns_2_when_no_systemd(self, mock_which, capsys):
+        """handle_service_command must return 2 (not crash) when systemd is absent."""
+        args = self._make_args(service_action="status", server="vpn.example.com")
+        rc = handle_service_command(args)
+        assert rc == 2
+        out = capsys.readouterr().out
+        assert "systemctl" in out.lower() or "systemd" in out.lower()
