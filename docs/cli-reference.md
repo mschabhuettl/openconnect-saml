@@ -120,9 +120,14 @@ your phone authenticator than persist a secret on the machine.
 ### Routing
 
 ```
---route CIDR               Include subnet in tunnel (repeatable)
---no-route CIDR            Exclude subnet from tunnel (repeatable)
+--route CIDR               Include subnet in tunnel (repeatable; IPv4 only)
+--no-route CIDR            Exclude subnet from tunnel (repeatable; IPv4 only)
 ```
+
+Routing is implemented via a generated vpnc-script wrapper that exports
+`CISCO_SPLIT_INC_*` / `CISCO_SPLIT_EXC_*` environment variables, overriding
+any server-pushed split routes. Requires `vpnc-scripts` to be installed.
+Not supported on Windows. See [networking.md](networking.md) for details.
 
 ### Notifications / hooks
 

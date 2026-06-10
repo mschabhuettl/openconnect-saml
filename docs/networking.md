@@ -27,6 +27,52 @@ no_routes = ["192.168.0.0/16"]
 
 CIDR validity is checked by `openconnect-saml config validate`.
 
+### How it works
+
+`openconnect` itself has no `--route`/`--no-route` flags; routing is
+controlled by the **vpnc-script** that openconnect invokes for
+connect/reconnect/disconnect events.
+
+When `--route` or `--no-route` options are present, `openconnect-saml`
+automatically generates a small POSIX `sh` wrapper script that:
+
+1. Exports the `CISCO_SPLIT_INC_*` / `CISCO_SPLIT_EXC_*` environment
+   variables that vpnc-script reads to configure split-tunnel routing.
+   These **override** any split-include/exclude routes pushed by the server.
+2. `exec`s the real system vpnc-script so all connect/disconnect/reconnect
+   logic continues to work normally.
+
+The wrapper is written to
+`$XDG_STATE_HOME/openconnect-saml/vpnc-route-wrapper.sh`
+(default: `~/.local/state/openconnect-saml/vpnc-route-wrapper.sh`)
+with permissions `755` so it is readable by root when openconnect runs
+via `sudo`/`doas`.
+
+### Requirements
+
+- A **vpnc-scripts** package must be installed. `openconnect-saml` probes
+  these locations automatically:
+  - `/usr/share/vpnc-scripts/vpnc-script` (Debian / Ubuntu / Fedora)
+  - `/etc/vpnc/vpnc-script` (older distros)
+  - `/usr/local/etc/vpnc/vpnc-script` (FreeBSD / manual install)
+  - `/opt/homebrew/etc/vpnc/vpnc-script` (Homebrew macOS)
+  - and falls back to `vpnc-script` on `$PATH`
+
+  If none is found, the connection fails with an actionable message:
+  install with `apt install vpnc-scripts`, `brew install vpnc`, or
+  `pacman -S vpnc`.
+
+- Only **IPv4** CIDRs are supported. An IPv6 CIDR produces a clear error.
+
+### Limitations
+
+- **Windows**: the sh-wrapper approach does not apply on Windows.
+  `--route`/`--no-route` are silently ignored with a warning on that
+  platform. Use openconnect's native Windows routing mechanisms if needed.
+- **Custom `--script`**: if you pass your own `--script` via extra
+  openconnect arguments, `--route`/`--no-route` cannot be combined with it.
+  A warning is logged and the user's script takes precedence.
+
 ## Kill-switch
 
 Blocks every outbound connection except to the VPN server, loopback,
