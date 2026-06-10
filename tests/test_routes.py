@@ -285,7 +285,7 @@ class TestRunOpenconnectRoutes:
 
             cmd = _app.subprocess.run.call_args[0][0]
         assert rc == 0
-        assert "written" not in written  # wrapper was never written
+        assert "content" not in written  # wrapper was never written
         # The user's own --script is preserved
         assert "--script" in cmd
         assert "/my/custom-script.sh" in cmd
