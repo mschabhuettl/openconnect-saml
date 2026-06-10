@@ -128,12 +128,17 @@ class Process(multiprocessing.Process):
 
         if self.proxy:
             parsed = urlparse(self.proxy)
+            # PyQt6 exposes proxy types as scoped enums (QNetworkProxy.ProxyType.HttpProxy);
+            # older PyQt5-style bindings may still use the flat names directly on QNetworkProxy.
+            _proxy_enum = getattr(QNetworkProxy, "ProxyType", QNetworkProxy)
             if parsed.scheme.startswith("socks5"):
-                proxy_type = QNetworkProxy.Socks5Proxy
+                proxy_type = _proxy_enum.Socks5Proxy
             elif parsed.scheme.startswith("http"):
-                proxy_type = QNetworkProxy.HttpProxy
+                proxy_type = _proxy_enum.HttpProxy
             else:
                 raise ValueError("Unsupported proxy type", parsed.scheme)
+            if parsed.port is None:
+                raise ValueError(f"Proxy URL must include a port number (got {self.proxy!r})")
             proxy = QNetworkProxy(proxy_type, parsed.hostname, parsed.port)
 
             QNetworkProxy.setApplicationProxy(proxy)
@@ -392,7 +397,10 @@ class WebBrowser(QWebEngineView):
             request.cancel()
 
     def createWindow(self, type):
-        if type == QWebEnginePage.WebDialog:
+        # PyQt6 uses scoped QWebEnginePage.WebWindowType.WebDialog; fall back to the
+        # flat name for older bindings.
+        _page_enum = getattr(QWebEnginePage, "WebWindowType", QWebEnginePage)
+        if type == _page_enum.WebDialog:
             self._popupWindow = WebPopupWindow(self.page().profile())
             return self._popupWindow.view()
 
@@ -444,7 +452,9 @@ class WebPopupWindow(QWidget):
         self._view = QWebEngineView(self)
 
         super().setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
-        super().setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
+        # PyQt6 uses scoped QSizePolicy.Policy.Minimum; fall back to the flat name for older bindings.
+        _sp_enum = getattr(QSizePolicy, "Policy", QSizePolicy)
+        super().setSizePolicy(_sp_enum.Minimum, _sp_enum.Minimum)
 
         layout = QVBoxLayout()
         super().setLayout(layout)

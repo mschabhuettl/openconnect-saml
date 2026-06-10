@@ -1,3 +1,5 @@
+import re
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -120,3 +122,55 @@ async def test_chrome_autofill_supports_id_username_and_clicks_once():
     assert await browser._try_click_selectors(["input[type=submit]"], clicked) is True
     assert await browser._try_click_selectors(["input[type=submit]"], clicked) is False
     assert browser._page.locators["input[type=submit]"].clicked == 1
+
+
+# ---------------------------------------------------------------------------
+# Regression tests for issue #58: unscoped PyQt6 enum access in
+# webengine_process.py crashed the Qt browser subprocess at runtime.
+# We verify at the source level so the test never needs PyQt6 installed.
+# ---------------------------------------------------------------------------
+
+_WEBENGINE_SRC = (
+    Path(__file__).parent.parent / "openconnect_saml" / "browser" / "webengine_process.py"
+).read_text(encoding="utf-8")
+
+
+def test_no_unscoped_qnetworkproxy_enum():
+    """QNetworkProxy.HttpProxy / .Socks5Proxy must not appear as bare
+    (unscoped) attribute accesses — they raise AttributeError in PyQt6.
+    The fix wraps them in ``getattr(QNetworkProxy, "ProxyType", QNetworkProxy)``.
+    """
+    # Match bare `QNetworkProxy.HttpProxy` or `QNetworkProxy.Socks5Proxy`
+    # but NOT `_proxy_enum.HttpProxy` / `ProxyType.HttpProxy` etc.
+    pattern = re.compile(r"\bQNetworkProxy\.(HttpProxy|Socks5Proxy)\b")
+    matches = pattern.findall(_WEBENGINE_SRC)
+    assert matches == [], (
+        f"Unscoped QNetworkProxy enum access found in webengine_process.py: {matches}. "
+        "Use ``getattr(QNetworkProxy, 'ProxyType', QNetworkProxy)`` instead (issue #58)."
+    )
+
+
+def test_no_unscoped_qwebenginepage_webdialog():
+    """QWebEnginePage.WebDialog must not appear as a bare unscoped attribute
+    access — it raises AttributeError in PyQt6. Fix wraps it via
+    ``getattr(QWebEnginePage, "WebWindowType", QWebEnginePage)``.
+    """
+    pattern = re.compile(r"\bQWebEnginePage\.WebDialog\b")
+    matches = pattern.findall(_WEBENGINE_SRC)
+    assert matches == [], (
+        f"Unscoped QWebEnginePage.WebDialog found in webengine_process.py: {matches}. "
+        "Use ``getattr(QWebEnginePage, 'WebWindowType', QWebEnginePage)`` instead (issue #58)."
+    )
+
+
+def test_no_unscoped_qsizepolicy_minimum():
+    """QSizePolicy.Minimum must not appear as a bare unscoped attribute
+    access — it raises AttributeError in PyQt6. Fix wraps it via
+    ``getattr(QSizePolicy, "Policy", QSizePolicy)``.
+    """
+    pattern = re.compile(r"\bQSizePolicy\.Minimum\b")
+    matches = pattern.findall(_WEBENGINE_SRC)
+    assert matches == [], (
+        f"Unscoped QSizePolicy.Minimum found in webengine_process.py: {matches}. "
+        "Use ``getattr(QSizePolicy, 'Policy', QSizePolicy)`` instead (issue #58)."
+    )

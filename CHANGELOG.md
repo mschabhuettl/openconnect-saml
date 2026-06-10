@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Qt WebEngine proxy crash with PyQt6** — `--proxy` caused an
+  `AttributeError` on startup because `QNetworkProxy.HttpProxy` /
+  `QNetworkProxy.Socks5Proxy` are only exposed as scoped enums in
+  PyQt6 (`QNetworkProxy.ProxyType.HttpProxy` etc.). The same
+  unscoped-access pattern also affected `QWebEnginePage.WebDialog`
+  (popup windows) and `QSizePolicy.Minimum` (popup window sizing).
+  All three are now resolved with a scoped-with-fallback lookup so
+  the code works on both PyQt5-style and PyQt6-style bindings.
+  Additionally, passing a proxy URL without a port number now raises
+  a clear `ValueError` instead of passing `None` silently to Qt.
+  Closes #58.
+
 ## [0.25.0] – 2026-05-26
 
 ### Security
