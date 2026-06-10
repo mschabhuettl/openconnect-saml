@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **`--route`/`--no-route` now actually work** (closes #59). The flags
+  previously passed literal `--route CIDR` / `--no-route CIDR` to
+  `openconnect`, which has no such options and exited immediately with
+  "unrecognized option". Routes are now implemented correctly: when
+  `--route` or `--no-route` options are given (CLI or via `routes`/
+  `no_routes` in a profile), a small POSIX `sh` wrapper script is
+  generated that exports the `CISCO_SPLIT_INC_*` / `CISCO_SPLIT_EXC_*`
+  environment variables consumed by `vpnc-script`, then `exec`s the
+  real system vpnc-script. The wrapper is passed to openconnect via
+  `--script`. This overrides any server-pushed split routes. Requires
+  `vpnc-scripts` to be installed (`apt install vpnc-scripts`,
+  `brew install vpnc`, or `pacman -S vpnc`). IPv6 CIDRs are rejected
+  with a clear error. Passing a custom `--script` via extra openconnect
+  args takes precedence (a warning is logged). On Windows the flags are
+  silently ignored with a warning (the sh-wrapper approach doesn't apply
+  there).
+
 ## [0.25.0] – 2026-05-26
 
 ### Security

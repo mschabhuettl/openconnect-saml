@@ -1,5 +1,6 @@
 import asyncio
 import getpass
+import ipaddress
 import json
 import logging
 import os
@@ -852,6 +853,80 @@ def _wait_for_tunnel(deadline_seconds: float) -> bool:
     return False
 
 
+# Common locations of the vpnc-script on various platforms.
+_VPNC_SCRIPT_PATHS = [
+    "/usr/share/vpnc-scripts/vpnc-script",  # Debian / Ubuntu / Fedora
+    "/etc/vpnc/vpnc-script",  # older distros
+    "/usr/local/etc/vpnc/vpnc-script",  # FreeBSD / manual install
+    "/usr/local/share/vpnc-scripts/vpnc-script",  # manual / some BSDs
+    "/opt/homebrew/etc/vpnc/vpnc-script",  # Homebrew ARM macOS
+    "/opt/homebrew/share/vpnc-scripts/vpnc-script",  # Homebrew ARM macOS
+    "/usr/local/etc/vpnc-scripts/vpnc-script",  # Homebrew Intel macOS
+]
+
+
+def _locate_vpnc_script() -> str | None:
+    """Return the path to the system vpnc-script, or None if not found."""
+    for path in _VPNC_SCRIPT_PATHS:
+        if os.path.isfile(path):
+            return path
+    # Fall back to PATH search (some distros put it there).
+    return shutil.which("vpnc-script")
+
+
+def _build_route_script_content(routes: list, no_routes: list, vpnc_script: str) -> str:
+    """Return the text of a POSIX sh wrapper that sets CISCO_SPLIT_INC*/EXC* then execs vpnc-script.
+
+    Each CIDR must be an IPv4Network already validated by the caller.
+    """
+    lines = ["#!/bin/sh"]
+
+    if routes:
+        lines += [f"CISCO_SPLIT_INC={len(routes)}", "export CISCO_SPLIT_INC"]
+        for i, cidr in enumerate(routes):
+            net = ipaddress.IPv4Network(cidr, strict=False)
+            lines += [
+                f"CISCO_SPLIT_INC_{i}_ADDR={net.network_address}",
+                f"export CISCO_SPLIT_INC_{i}_ADDR",
+                f"CISCO_SPLIT_INC_{i}_MASK={net.netmask}",
+                f"export CISCO_SPLIT_INC_{i}_MASK",
+                f"CISCO_SPLIT_INC_{i}_MASKLEN={net.prefixlen}",
+                f"export CISCO_SPLIT_INC_{i}_MASKLEN",
+            ]
+
+    if no_routes:
+        lines += [f"CISCO_SPLIT_EXC={len(no_routes)}", "export CISCO_SPLIT_EXC"]
+        for i, cidr in enumerate(no_routes):
+            net = ipaddress.IPv4Network(cidr, strict=False)
+            lines += [
+                f"CISCO_SPLIT_EXC_{i}_ADDR={net.network_address}",
+                f"export CISCO_SPLIT_EXC_{i}_ADDR",
+                f"CISCO_SPLIT_EXC_{i}_MASK={net.netmask}",
+                f"export CISCO_SPLIT_EXC_{i}_MASK",
+                f"CISCO_SPLIT_EXC_{i}_MASKLEN={net.prefixlen}",
+                f"export CISCO_SPLIT_EXC_{i}_MASKLEN",
+            ]
+
+    lines.append(f'exec {shlex.quote(vpnc_script)} "$@"')
+    return "\n".join(lines) + "\n"
+
+
+def _write_route_script(content: str) -> str:
+    """Write *content* to a stable path under the XDG state dir and make it executable.
+
+    Returns the path as a string.  The file is world-readable/executable so that
+    openconnect (running as root via sudo/doas) can read it.
+    """
+    xdg_state = os.environ.get("XDG_STATE_HOME")
+    base = Path(xdg_state) if xdg_state else Path.home() / ".local" / "state"
+    state_dir = base / "openconnect-saml"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    script_path = state_dir / "vpnc-route-wrapper.sh"
+    script_path.write_text(content)
+    script_path.chmod(0o755)
+    return str(script_path)
+
+
 def run_openconnect(
     auth_info,
     host,
@@ -931,12 +1006,46 @@ def run_openconnect(
         # for self-signed gateways: the hash binds to the actual certificate.
         openconnect_args.extend(["--no-system-trust"])
 
-    if routes:
-        for route in routes:
-            openconnect_args.extend(["--route", route])
-    if no_routes:
-        for no_route in no_routes:
-            openconnect_args.extend(["--no-route", no_route])
+    if routes or no_routes:
+        if os.name == "nt":
+            logger.warning(
+                "--route/--no-route are not supported on Windows "
+                "(vpnc-script sh-wrapper cannot run there); routes will be ignored"
+            )
+        elif any(a == "--script" or a.startswith("--script=") for a in (args or [])):
+            logger.warning(
+                "--route/--no-route cannot be combined with a user-supplied --script; "
+                "the user's --script takes precedence and routes will be ignored"
+            )
+        else:
+            # Validate all CIDRs; reject IPv6 (not yet supported).
+            all_cidrs = list(routes or []) + list(no_routes or [])
+            for cidr in all_cidrs:
+                try:
+                    net = ipaddress.ip_network(cidr, strict=False)
+                except ValueError as exc:
+                    logger.error("Invalid CIDR in --route/--no-route", cidr=cidr, error=str(exc))
+                    return 20
+                if isinstance(net, ipaddress.IPv6Network):
+                    logger.error(
+                        "--route/--no-route: IPv6 CIDRs are not yet supported; use only IPv4 CIDRs",
+                        cidr=cidr,
+                    )
+                    return 20
+
+            vpnc_script = _locate_vpnc_script()
+            if not vpnc_script:
+                logger.error(
+                    "--route/--no-route requires vpnc-scripts to be installed. "
+                    "Install it with: 'apt install vpnc-scripts', "
+                    "'brew install vpnc', or 'pacman -S vpnc'."
+                )
+                return 20
+
+            script_content = _build_route_script_content(routes or [], no_routes or [], vpnc_script)
+            script_path = _write_route_script(script_content)
+            openconnect_args.extend(["--script", script_path])
+            logger.debug("Generated vpnc-route wrapper", path=script_path)
 
     if os.name == "nt":
         command_line = ["powershell.exe", "-Command", shlex.join(openconnect_args)]
