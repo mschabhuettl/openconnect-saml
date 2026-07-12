@@ -286,6 +286,30 @@ message instead of a dense Playwright traceback.
 >   `--browser chrome` (runs `playwright install chromium`, caches under
 >   `~/.cache/ms-playwright/`, never re-downloads).
 
+### Persistent browser profile with `--chrome-user-data-dir`
+
+By default the Chrome backend uses an ephemeral browser context: nothing
+is written to disk and every connect starts from a blank session. That
+also means the IdP's **"don't ask again for N days"** MFA checkbox (which
+the auto-fill now ticks when it appears) has no effect — the cookie it
+sets is discarded with the context.
+
+To make it stick, give the backend a persistent profile directory:
+
+```sh
+openconnect-saml connect <profile> --browser chrome --chrome-user-data-dir ~/.config/openconnect-saml/chrome-profile
+```
+
+The directory is created with mode `0700` if missing. With the profile in
+place, the IdP session and MFA-remember cookies survive between connects,
+so repeat logins within the remember window typically complete without
+retyping the password or re-approving MFA.
+
+> **Trade-off:** the profile stores live IdP session cookies on disk,
+> like a regular browser profile. Delete the directory to reset the
+> session. Leave the flag unset to keep the previous fully-ephemeral
+> behavior.
+
 ## Skipping prompts
 
 | Goal | Flag |

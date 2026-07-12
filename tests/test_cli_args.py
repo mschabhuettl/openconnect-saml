@@ -37,6 +37,22 @@ class TestChromeFlags:
         )
         assert args.chrome_executable == "/opt/chromium"
 
+    def test_chrome_user_data_dir_default_none(self, parser):
+        args = parser.parse_args(["-s", "vpn.example.com"])
+        assert args.chrome_user_data_dir is None
+
+    def test_chrome_user_data_dir_parsed(self, parser):
+        args = parser.parse_args(
+            ["-s", "vpn.example.com", "--chrome-user-data-dir", "/home/u/.config/ocs/profile"]
+        )
+        assert args.chrome_user_data_dir == "/home/u/.config/ocs/profile"
+
+    def test_chrome_user_data_dir_on_connect_subcommand(self, main_parser):
+        args = main_parser.parse_args(
+            ["connect", "-s", "vpn.example.com", "--chrome-user-data-dir", "/tmp/profile"]
+        )
+        assert args.chrome_user_data_dir == "/tmp/profile"
+
 
 class TestTotpFlags:
     def test_totp_source_none_accepted(self, parser):

@@ -752,6 +752,7 @@ async def _run(args, cfg):
         auth_script=auth_script,
         chrome_channel=getattr(args, "chrome_channel", None),
         chrome_executable=getattr(args, "chrome_executable", None),
+        chrome_user_data_dir=getattr(args, "chrome_user_data_dir", None),
     )
 
     if credentials:
@@ -806,6 +807,7 @@ def authenticate_to(
     auth_script=None,
     chrome_channel=None,
     chrome_executable=None,
+    chrome_user_data_dir=None,
 ):
     logger.info("Authenticating to VPN endpoint", name=host.name, address=host.address)
     return Authenticator(
@@ -822,6 +824,7 @@ def authenticate_to(
         auth_script=auth_script,
         chrome_channel=chrome_channel,
         chrome_executable=chrome_executable,
+        chrome_user_data_dir=chrome_user_data_dir,
     ).authenticate(display_mode)
 
 
