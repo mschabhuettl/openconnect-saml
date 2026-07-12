@@ -67,6 +67,13 @@ both override the XDG default for one invocation.
                            Values: chrome | chrome-beta | chrome-dev | chrome-canary |
                                    msedge | msedge-beta | msedge-dev | msedge-canary
                            Skips the ~150 MB `playwright install chromium` download.
+--chrome-executable PATH   With --browser=chrome, drive a specific installed
+                           Chromium / Chrome / Edge binary (e.g. /usr/bin/chromium).
+                           Takes precedence over --chrome-channel.
+--chrome-user-data-dir DIR With --browser=chrome, keep a persistent browser
+                           profile at DIR (created 0700). IdP session and MFA
+                           "don't ask again" cookies survive between connects.
+                           Default: ephemeral profile, discarded on exit.
 --window-size WxH          Browser window size (Qt only)
 --useragent STRING         Custom user-agent for the SAML browser
 ```

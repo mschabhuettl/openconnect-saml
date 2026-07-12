@@ -118,6 +118,18 @@ def _add_connection_args(parser):
         metavar="PATH",
         default=None,
     )
+    parser.add_argument(
+        "--chrome-user-data-dir",
+        help=(
+            "When --browser=chrome, keep a persistent browser profile at this "
+            "directory (created 0700 if missing). The IdP session and MFA "
+            '"don\'t ask again for N days" cookies then survive between '
+            "connects, so repeat logins can skip password/MFA entirely. "
+            "Default: an ephemeral profile that is discarded on exit."
+        ),
+        metavar="DIR",
+        default=None,
+    )
     parser.add_argument("--on-connect", help="Command to run after VPN connects", default="")
     parser.add_argument("--on-disconnect", help="Command to run when disconnecting", default="")
     parser.add_argument(

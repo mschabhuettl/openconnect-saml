@@ -343,3 +343,195 @@ class TestChromeBrowserIntegration:
             assert "token" in cookies
 
         asyncio.run(_test())
+
+
+class TestHelperClickSelectors:
+    """MFA-method-switch selectors are gated on TOTP availability (#17)."""
+
+    class _Creds:
+        def __init__(self, totp_source="none", totp=None):
+            self.totp_source = totp_source
+            self._totp = totp
+
+        @property
+        def totp(self):
+            return self._totp
+
+    def test_no_credentials_drops_totp_switch(self):
+        from openconnect_saml.browser import chrome
+
+        selectors = chrome._helper_click_selectors(None)
+        assert "div[data-value=PhoneAppOTP]" not in selectors
+        assert "a[id=signInAnotherWay]" not in selectors
+        assert "input[id=KmsiCheckboxField]" in selectors
+
+    def test_totp_source_none_drops_totp_switch(self):
+        from openconnect_saml.browser import chrome
+
+        selectors = chrome._helper_click_selectors(self._Creds(totp_source="none"))
+        assert "div[data-value=PhoneAppOTP]" not in selectors
+        assert "a[id=signInAnotherWay]" not in selectors
+
+    def test_provider_source_keeps_totp_switch(self):
+        from openconnect_saml.browser import chrome
+
+        selectors = chrome._helper_click_selectors(self._Creds(totp_source="1password"))
+        assert "div[data-value=PhoneAppOTP]" in selectors
+        assert "a[id=signInAnotherWay]" in selectors
+
+    def test_local_source_requires_a_secret(self):
+        from openconnect_saml.browser import chrome
+
+        with_secret = chrome._helper_click_selectors(
+            self._Creds(totp_source="local", totp="123456")
+        )
+        without_secret = chrome._helper_click_selectors(self._Creds(totp_source="local"))
+        assert "div[data-value=PhoneAppOTP]" in with_secret
+        assert "div[data-value=PhoneAppOTP]" not in without_secret
+
+    def test_mfa_remember_checkboxes_always_present(self):
+        from openconnect_saml.browser import chrome
+
+        for creds in (None, self._Creds(totp_source="1password")):
+            selectors = chrome._helper_click_selectors(creds)
+            assert "input[name=DontShowAgain]" in selectors
+
+
+class _FakeEl:
+    """Minimal Playwright element stub for page-logic tests."""
+
+    def __init__(self, visible=False, value="", attrs=None, checked=False):
+        self.visible = visible
+        self.value = value
+        self.attrs = attrs or {}
+        self.checked = checked
+        self.clicks = 0
+
+    async def is_visible(self, timeout=None):
+        return self.visible
+
+    async def input_value(self):
+        return self.value
+
+    async def get_attribute(self, name):
+        return self.attrs.get(name)
+
+    async def is_checked(self):
+        return self.checked
+
+    async def click(self):
+        self.clicks += 1
+
+
+class _FakeLocator:
+    def __init__(self, el):
+        self.first = el
+
+
+class _FakePage:
+    def __init__(self, elements):
+        self.elements = elements
+
+    def locator(self, sel):
+        return _FakeLocator(self.elements.get(sel, _FakeEl()))
+
+
+def _browser_with(elements):
+    from openconnect_saml.browser.chrome import ChromeBrowser
+
+    browser = ChromeBrowser()
+    browser._page = _FakePage(elements)
+    return browser
+
+
+class TestPendingSecret:
+    """Submit fires for a pre-filled password screen, but never over an error."""
+
+    def test_filled_visible_password_is_pending(self):
+        browser = _browser_with({"input[type=password]": _FakeEl(visible=True, value="s3cret")})
+        assert asyncio.run(browser._has_pending_secret()) is True
+
+    def test_empty_password_is_not_pending(self):
+        browser = _browser_with({"input[type=password]": _FakeEl(visible=True, value="")})
+        assert asyncio.run(browser._has_pending_secret()) is False
+
+    def test_error_banner_blocks_resubmit(self):
+        browser = _browser_with(
+            {
+                "input[type=password]": _FakeEl(visible=True, value="wrong"),
+                "div[id=passwordError]": _FakeEl(visible=True),
+            }
+        )
+        assert asyncio.run(browser._has_pending_secret()) is False
+
+    def test_kmsi_page_detected(self):
+        browser = _browser_with({"input[id=KmsiCheckboxField]": _FakeEl(visible=True)})
+        assert asyncio.run(browser._is_kmsi_page()) is True
+
+
+class TestCheckboxClick:
+    """_try_click_selectors never toggles an already-checked checkbox off."""
+
+    def test_unchecked_checkbox_is_clicked(self):
+        el = _FakeEl(visible=True, attrs={"type": "checkbox"}, checked=False)
+        browser = _browser_with({"input[name=DontShowAgain]": el})
+        clicked = asyncio.run(browser._try_click_selectors(["input[name=DontShowAgain]"]))
+        assert clicked is True
+        assert el.clicks == 1
+
+    def test_checked_checkbox_is_skipped(self):
+        el = _FakeEl(visible=True, attrs={"type": "checkbox"}, checked=True)
+        browser = _browser_with({"input[name=DontShowAgain]": el})
+        clicked: set[str] = set()
+        result = asyncio.run(browser._try_click_selectors(["input[name=DontShowAgain]"], clicked))
+        assert result is False
+        assert el.clicks == 0
+        # Remembered as handled so it isn't re-probed every step.
+        assert "input[name=DontShowAgain]" in clicked
+
+
+class TestPersistentProfile:
+    def test_init_default_is_ephemeral(self):
+        from openconnect_saml.browser.chrome import ChromeBrowser
+
+        assert ChromeBrowser().user_data_dir is None
+
+    def test_init_custom_dir(self):
+        from openconnect_saml.browser.chrome import ChromeBrowser
+
+        browser = ChromeBrowser(user_data_dir="/tmp/profile")
+        assert browser.user_data_dir == "/tmp/profile"
+
+    @_skip_no_playwright
+    def test_spawn_uses_persistent_context(self, tmp_path):
+        """With user_data_dir set, Playwright must launch a persistent
+        context rooted at that directory instead of an ephemeral one."""
+        from openconnect_saml.browser.chrome import ChromeBrowser
+
+        profile_dir = tmp_path / "chrome-profile"
+
+        async def _test():
+            browser = ChromeBrowser(user_data_dir=str(profile_dir))
+
+            mock_context = MagicMock()
+            mock_context.pages = []
+            mock_context.new_page = AsyncMock(return_value=MagicMock())
+            mock_chromium = MagicMock()
+            mock_chromium.launch = AsyncMock()
+            mock_chromium.launch_persistent_context = AsyncMock(return_value=mock_context)
+            mock_pw = MagicMock()
+            mock_pw.chromium = mock_chromium
+            mock_pw.stop = AsyncMock()
+            mock_async_pw = MagicMock()
+            mock_async_pw.start = AsyncMock(return_value=mock_pw)
+
+            with patch("playwright.async_api.async_playwright", return_value=mock_async_pw):
+                await browser.spawn()
+
+            mock_chromium.launch_persistent_context.assert_called_once()
+            call = mock_chromium.launch_persistent_context.call_args
+            assert call.args[0] == str(profile_dir)
+            mock_chromium.launch.assert_not_called()
+            assert profile_dir.is_dir()
+
+        asyncio.run(_test())

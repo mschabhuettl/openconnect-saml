@@ -35,11 +35,13 @@ class Authenticator:
         auth_script=None,
         chrome_channel=None,
         chrome_executable=None,
+        chrome_user_data_dir=None,
     ):
         self.host = host
         self.proxy = proxy
         self.chrome_channel = chrome_channel
         self.chrome_executable = chrome_executable
+        self.chrome_user_data_dir = chrome_user_data_dir
         self.credentials = credentials
         self.version = version
         self.timeout = timeout
@@ -156,6 +158,7 @@ class Authenticator:
                 timeout=self.timeout * 1000,
                 channel=self.chrome_channel,
                 executable_path=self.chrome_executable,
+                user_data_dir=self.chrome_user_data_dir,
             ) as browser:
                 cookies = await browser.authenticate_at(
                     url=str(auth_request_response.login_url),

@@ -10,6 +10,7 @@ Install with: pip install openconnect-saml[chrome]
 from __future__ import annotations
 
 import asyncio
+import os
 from typing import TYPE_CHECKING
 
 import structlog
@@ -63,6 +64,65 @@ _MFA_CHALLENGE_SELECTORS = [
     "text=/check your.*app/i",
 ]
 
+# Subset of _CLICK_SELECTORS that switches the MFA method to "use a
+# verification code". Only wanted when a TOTP source can actually fill
+# that code — with push MFA they pull the flow off the approval screen.
+_TOTP_SWITCH_SELECTORS = [
+    "div[data-value=PhoneAppOTP]",
+    "a[id=signInAnotherWay]",
+]
+
+# "Don't ask again for N days" MFA-remember checkboxes (verification-code
+# and push screen variants). Only effective across sessions when a
+# persistent profile (``user_data_dir``) is used.
+_MFA_REMEMBER_SELECTORS = [
+    "input[id=idChkBx_SAOTCC_TD]",
+    "input[id=idChkBx_SAOTCAS_TD]",
+    "input[name=DontShowAgain]",
+]
+
+# "Stay signed in?" (KMSI) page — nothing to fill, but it still needs a
+# submit click to proceed. Detected explicitly so submit is never
+# blind-clicked on pages we don't recognize.
+_KMSI_SELECTORS = [
+    "input[id=KmsiCheckboxField]",
+    "text=/stay signed in/i",
+]
+
+# Visible error banner (e.g. wrong password). Blocks auto-resubmit so a
+# bad credential is only ever sent once — never in a lockout loop.
+_ERROR_SELECTORS = [
+    "div[id=passwordError]",
+    "div[id=usernameError]",
+    "div[role=alert]",
+]
+
+
+def _helper_click_selectors(credentials) -> list[str]:
+    """Session helper-choice selectors, adjusted to the credential setup.
+
+    The MFA-method-switch selectors (``PhoneAppOTP`` / ``signInAnotherWay``)
+    are only useful when a TOTP source is available to fill the code they
+    lead to. With push MFA (no TOTP source) clicking them pulls the flow off
+    the "approve the sign-in on your phone" screen onto a verification-code
+    prompt nobody will fill — so they are dropped (#17).
+    """
+    totp_source = getattr(credentials, "totp_source", "none") if credentials else "none"
+    if totp_source == "none":
+        has_totp = False
+    elif totp_source == "local":
+        # Side-effect-free: reads the in-memory secret or the keyring.
+        try:
+            has_totp = bool(credentials.totp)
+        except Exception:  # nosec
+            has_totp = False
+    else:
+        # Provider-backed sources (1password, bitwarden, 2fauth, pass,
+        # keepassxc, prompt) can produce a code at fill time.
+        has_totp = True
+    selectors = [s for s in _CLICK_SELECTORS if has_totp or s not in _TOTP_SWITCH_SELECTORS]
+    return selectors + _MFA_REMEMBER_SELECTORS
+
 
 class ChromeBrowser:
     """Playwright-based Chrome/Chromium browser for SAML authentication.
@@ -91,6 +151,13 @@ class ChromeBrowser:
         ``chromium`` value, so a plain distro ``chromium`` can only be
         reached this way (#39, #24). Takes precedence over ``channel``
         when both are given.
+    user_data_dir : str or None
+        Directory for a persistent browser profile (Playwright
+        ``launch_persistent_context``). When set, the IdP session and
+        MFA-remember ("don't ask again for N days") cookies survive
+        between connects, so repeat logins can skip password/MFA
+        entirely. When ``None`` (default), the context is ephemeral and
+        nothing is written to disk — the previous behavior.
     """
 
     def __init__(
@@ -100,12 +167,14 @@ class ChromeBrowser:
         timeout: int = 60_000,
         channel: str | None = None,
         executable_path: str | None = None,
+        user_data_dir: str | None = None,
     ):
         self.headless = headless
         self.proxy = proxy
         self.timeout = timeout
         self.channel = channel
         self.executable_path = executable_path
+        self.user_data_dir = user_data_dir
         self._playwright = None
         self._browser = None
         self._context = None
@@ -168,8 +237,22 @@ class ChromeBrowser:
             # if the user already has Chrome/Edge installed locally.
             launch_args["channel"] = self.channel
 
+        user_agent = (
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        )
         try:
-            self._browser = await self._playwright.chromium.launch(**launch_args)
+            if self.user_data_dir:
+                # Persistent profile: keeps the IdP session and MFA-remember
+                # cookies between connects. 0o700 — the profile stores live
+                # session cookies.
+                profile_dir = os.path.expanduser(self.user_data_dir)
+                os.makedirs(profile_dir, mode=0o700, exist_ok=True)
+                self._context = await self._playwright.chromium.launch_persistent_context(
+                    profile_dir, user_agent=user_agent, **launch_args
+                )
+            else:
+                self._browser = await self._playwright.chromium.launch(**launch_args)
         except Exception as exc:
             # ``async_playwright().start()`` already spawned the driver
             # process. If launch raises, ``__aexit__`` will never run
@@ -198,13 +281,11 @@ class ChromeBrowser:
                     "Chrome / Microsoft Edge installed."
                 ) from exc
             raise
-        self._context = await self._browser.new_context(
-            user_agent=(
-                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            ),
-        )
-        self._page = await self._context.new_page()
+        if self._context is None:
+            self._context = await self._browser.new_context(user_agent=user_agent)
+        # launch_persistent_context opens with an initial blank page.
+        pages = self._context.pages
+        self._page = pages[0] if pages else await self._context.new_page()
         self._page.set_default_timeout(self.timeout)
 
     async def authenticate_at(
@@ -240,6 +321,7 @@ class ChromeBrowser:
 
         max_steps = 30
         clicked_selectors: set[str] = set()
+        helper_selectors = _helper_click_selectors(credentials)
         for step in range(max_steps):
             current_url = self._page.url
             logger.debug("Chrome: auth step", step=step, url=current_url)
@@ -276,9 +358,17 @@ class ChromeBrowser:
             # Check if URL changed (navigation happened)
             new_url = self._page.url
             if new_url == current_url:
-                # No navigation — click helper choices once, and only submit after filling data.
-                selectors = _CLICK_SELECTORS + (_SUBMIT_SELECTORS if filled_any else [])
-                await self._try_click_selectors(selectors, clicked_selectors)
+                # No navigation — click helper choices once per session, and
+                # submit whenever there is unsubmitted data. ``filled_any``
+                # alone is not enough: Microsoft's login SPA keeps the same
+                # URL across the email → password → KMSI steps and
+                # pre-renders the password input while the email screen is
+                # still shown, so the fill can land one step before the
+                # screen that needs its submit click (the session-wide
+                # click dedupe would then never submit that screen).
+                await self._try_click_selectors(helper_selectors, clicked_selectors)
+                if filled_any or await self._has_pending_secret() or await self._is_kmsi_page():
+                    await self._try_click_selectors(_SUBMIT_SELECTORS, set())
                 import contextlib
 
                 with contextlib.suppress(Exception):
@@ -355,8 +445,47 @@ class ChromeBrowser:
                 continue
         return False
 
+    async def _has_pending_secret(self) -> bool:
+        """A visible password/TOTP field already holds a value.
+
+        Microsoft's SPA pre-renders the password input while the email
+        screen is still displayed, so ``_auto_fill`` can fill it one step
+        before its screen is shown — ``filled_any`` is then False on the
+        step where the password screen actually needs its submit click.
+        Never returns True while an error banner is visible, so a wrong
+        credential is not re-submitted in a loop.
+        """
+        for sel in _ERROR_SELECTORS:
+            try:
+                if await self._page.locator(sel).first.is_visible(timeout=100):
+                    return False
+            except Exception:  # nosec
+                continue
+        for sel in _PASSWORD_SELECTORS + _TOTP_SELECTORS:
+            try:
+                el = self._page.locator(sel).first
+                if await el.is_visible(timeout=200) and await el.input_value():
+                    return True
+            except Exception:  # nosec
+                continue
+        return False
+
+    async def _is_kmsi_page(self) -> bool:
+        """Detect the "Stay signed in?" (KMSI) page so it can be submitted."""
+        for sel in _KMSI_SELECTORS:
+            try:
+                if await self._page.locator(sel).first.is_visible(timeout=200):
+                    return True
+            except Exception:  # nosec
+                continue
+        return False
+
     async def _try_click_selectors(self, selectors: list[str], clicked: set[str] | None = None):
-        """Try to click elements matching the given selectors."""
+        """Try to click elements matching the given selectors.
+
+        Checkboxes that are already checked are skipped instead of clicked,
+        so a helper checkbox (KMSI / MFA-remember) is never toggled back off.
+        """
         clicked = clicked if clicked is not None else set()
         for sel in selectors:
             if sel in clicked:
@@ -364,6 +493,13 @@ class ChromeBrowser:
             try:
                 el = self._page.locator(sel).first
                 if await el.is_visible(timeout=300):
+                    try:
+                        el_type = (await el.get_attribute("type") or "").lower()
+                        if el_type == "checkbox" and await el.is_checked():
+                            clicked.add(sel)
+                            continue
+                    except Exception:  # nosec
+                        pass
                     await el.click()
                     clicked.add(sel)
                     logger.debug("Chrome: clicked element", selector=sel)
@@ -383,6 +519,12 @@ class ChromeBrowser:
 
     async def close(self):
         """Close the browser and clean up."""
+        if self._context and not self._browser:
+            # launch_persistent_context has no separate Browser object —
+            # closing the context shuts Chromium down and flushes the
+            # persistent profile to disk.
+            await self._context.close()
+        self._context = None
         if self._browser:
             await self._browser.close()
             self._browser = None
