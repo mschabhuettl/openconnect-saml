@@ -21,6 +21,7 @@ from openconnect_saml.authenticator import (
     HEADLESS_MODE,
     Authenticator,
     AuthResponseError,
+    client_user_agent,
 )
 from openconnect_saml.browser import Terminated
 from openconnect_saml.config import (
@@ -237,6 +238,7 @@ def run(args):
             cert_key=cert_key,
             wait_seconds=getattr(args, "wait_seconds", 0),
             no_cert_check=getattr(args, "no_cert_check", False),
+            client_os=getattr(args, "client_os", None),
         )
         return rc
     except KeyboardInterrupt:
@@ -360,6 +362,7 @@ def _run_with_reconnect(
                     routes=routes,
                     no_routes=no_routes,
                     useragent=getattr(args, "useragent", None),
+                    client_os=getattr(args, "client_os", None),
                 )
             except KeyboardInterrupt:
                 logger.warning("CTRL-C pressed, stopping reconnect loop")
@@ -752,6 +755,7 @@ async def _run(args, cfg):
         auth_script=auth_script,
         chrome_channel=getattr(args, "chrome_channel", None),
         chrome_executable=getattr(args, "chrome_executable", None),
+        client_os=getattr(args, "client_os", None),
     )
 
     if credentials:
@@ -806,6 +810,7 @@ def authenticate_to(
     auth_script=None,
     chrome_channel=None,
     chrome_executable=None,
+    client_os=None,
 ):
     logger.info("Authenticating to VPN endpoint", name=host.name, address=host.address)
     return Authenticator(
@@ -822,6 +827,7 @@ def authenticate_to(
         auth_script=auth_script,
         chrome_channel=chrome_channel,
         chrome_executable=chrome_executable,
+        client_os=client_os,
     ).authenticate(display_mode)
 
 
@@ -870,6 +876,7 @@ def run_openconnect(
     cert_key=None,
     wait_seconds=0,
     no_cert_check=False,
+    client_os=None,
 ):
     """Spawn the openconnect process.
 
@@ -902,9 +909,7 @@ def run_openconnect(
 
     user_agent = useragent
     if not user_agent:
-        user_agent = (
-            f"AnyConnect Win {version}" if os.name == "nt" else f"AnyConnect Linux_64 {version}"
-        )
+        user_agent = client_user_agent(version, client_os)
     openconnect_args = [
         "openconnect",
         "--useragent",

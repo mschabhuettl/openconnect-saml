@@ -1,5 +1,7 @@
+import os
 import socket
 import ssl
+import sys
 from urllib.parse import urljoin
 
 import attr
@@ -18,6 +20,72 @@ CHROME_MODE = "chrome"
 
 logger = structlog.get_logger()
 
+# --- Reported client platform ------------------------------------------
+#
+# Cisco grades a connecting client on two independent strings, and a DAP
+# rule can key on either one:
+#
+#   * ``<device-id>`` in the ``config-auth`` XML -- the same vocabulary
+#     openconnect exposes as ``--os``: linux, linux-64, win, mac-intel,
+#     android, apple-ios.
+#   * the ``User-Agent``, which a real AnyConnect / Secure Client builds
+#     as ``AnyConnect <token> <version>`` -- and that token is *not* the
+#     device-id string ("mac-intel" pairs with "Darwin_i386").
+#
+# They live in one table on purpose: claiming mac-intel in the XML while
+# the User-Agent still says Linux_64 is a self-inconsistent client, which
+# is exactly what a posture/DAP rule is built to notice.
+#
+# There is no arm64 token. Cisco's macOS client is a universal binary and
+# identifies as mac-intel / Darwin_i386 on Apple Silicon too (see Cisco
+# enhancement CSCvw38645), so ``platform.machine()`` is deliberately not
+# consulted here.
+CLIENT_PLATFORMS = {
+    # device-id (== openconnect --os) : AnyConnect User-Agent token
+    "linux-64": "Linux_64",
+    "linux": "Linux",
+    # A real Windows client sends "AnyConnect Windows <ver>"; we keep the
+    # historical "Win" so this table is a byte-for-byte no-op on Windows.
+    "win": "Win",
+    "mac-intel": "Darwin_i386",
+    "android": "Android",
+    "apple-ios": "Apple-iOS",
+}
+
+DEFAULT_CLIENT_PLATFORM = "linux-64"
+
+
+def default_client_platform():
+    """AnyConnect platform token matching the host we are running on."""
+    # ``os.name`` is the predicate this package has always used to single out
+    # Windows; ``sys.platform`` additionally covers Cygwin, where ``os.name``
+    # is "posix". On a real host at most one of these is ever true.
+    if os.name == "nt" or sys.platform.startswith("win") or sys.platform == "cygwin":
+        return "win"
+    if sys.platform == "darwin":
+        return "mac-intel"
+    return DEFAULT_CLIENT_PLATFORM
+
+
+def resolve_client_platform(client_os=None):
+    """Normalise a caller-supplied platform token; fall back to autodetect."""
+    token = (client_os or "").strip().lower()
+    if not token or token == "auto":
+        return default_client_platform()
+    if token not in CLIENT_PLATFORMS:
+        logger.warning(
+            "Unknown client OS token, autodetecting instead",
+            client_os=client_os,
+            known=sorted(CLIENT_PLATFORMS),
+        )
+        return default_client_platform()
+    return token
+
+
+def client_user_agent(version, client_os=None):
+    """``AnyConnect <token> <version>`` User-Agent for *client_os*."""
+    return f"AnyConnect {CLIENT_PLATFORMS[resolve_client_platform(client_os)]} {version}"
+
 
 class Authenticator:
     def __init__(
@@ -35,6 +103,7 @@ class Authenticator:
         auth_script=None,
         chrome_channel=None,
         chrome_executable=None,
+        client_os=None,
     ):
         self.host = host
         self.proxy = proxy
@@ -42,6 +111,9 @@ class Authenticator:
         self.chrome_executable = chrome_executable
         self.credentials = credentials
         self.version = version
+        # Resolve once: the User-Agent and both config-auth bodies must
+        # agree, or the client looks spoofed to the gateway.
+        self.client_os = resolve_client_platform(client_os)
         self.timeout = timeout
         self.ssl_legacy = ssl_legacy
         self.window_width = window_width
@@ -50,7 +122,11 @@ class Authenticator:
         self.allowed_hosts = allowed_hosts
         self.auth_script = auth_script
         self.session = create_http_session(
-            proxy, version, ssl_legacy=ssl_legacy, verify_tls=verify_tls
+            proxy,
+            version,
+            ssl_legacy=ssl_legacy,
+            verify_tls=verify_tls,
+            client_os=self.client_os,
         )
 
     async def authenticate(self, display_mode):
@@ -117,7 +193,9 @@ class Authenticator:
         logger.debug("Auth target url", url=self.host.vpn_url)
 
     def _start_authentication(self, no_cert=False):
-        request = _create_auth_init_request(self.host, self.host.vpn_url, self.version, no_cert)
+        request = _create_auth_init_request(
+            self.host, self.host.vpn_url, self.version, no_cert, client_os=self.client_os
+        )
         # Never log raw auth bodies at DEBUG: the request/response envelopes
         # carry SAML/auth material and (in the finish step) the VPN session
         # token. Logging them verbatim at --log-level DEBUG would write
@@ -181,7 +259,7 @@ class Authenticator:
 
     def _complete_authentication(self, auth_request_response, sso_token):
         request = _create_auth_finish_request(
-            self.host, auth_request_response, sso_token, self.version
+            self.host, auth_request_response, sso_token, self.version, client_os=self.client_os
         )
         # The finish request embeds the SSO token and the finish response
         # carries the VPN *session token* — logging either verbatim at DEBUG
@@ -223,12 +301,12 @@ class SSLLegacyAdapter(requests.adapters.HTTPAdapter):
         return super().init_poolmanager(*args, **kwargs)
 
 
-def create_http_session(proxy, version, ssl_legacy=False, verify_tls=True):
+def create_http_session(proxy, version, ssl_legacy=False, verify_tls=True, client_os=None):
     session = requests.Session()
     session.proxies = {"http": proxy, "https": proxy}
     session.headers.update(
         {
-            "User-Agent": f"AnyConnect Linux_64 {version}",
+            "User-Agent": client_user_agent(version, client_os),
             "Accept": "*/*",
             "Accept-Encoding": "identity",
             "X-Transcend-Version": "1",
@@ -283,7 +361,7 @@ def create_probe_session(proxy, ssl_legacy=False, verify_tls=True):
 E = objectify.ElementMaker(annotate=False)
 
 
-def _create_auth_init_request(host, url, version, no_cert=False):
+def _create_auth_init_request(host, url, version, no_cert=False, client_os=None):
     ConfigAuth = getattr(E, "config-auth")
     Version = E.version
     DeviceId = getattr(E, "device-id")
@@ -296,7 +374,7 @@ def _create_auth_init_request(host, url, version, no_cert=False):
     root = ConfigAuth(
         {"client": "vpn", "type": "init", "aggregate-auth-version": "2"},
         Version({"who": "vpn"}, version),
-        DeviceId("linux-64"),
+        DeviceId(resolve_client_platform(client_os)),
         GroupSelect(host.name),
         GroupAccess(url),
         Capabilities(AuthMethod("single-sign-on-v2")),
@@ -465,7 +543,7 @@ class AuthCompleteResponse:
     server_cert_hash = attr.ib(converter=str)
 
 
-def _create_auth_finish_request(host, auth_info, sso_token, version):
+def _create_auth_finish_request(host, auth_info, sso_token, version, client_os=None):
     hostname = socket.gethostname()
 
     ConfigAuth = getattr(E, "config-auth")
@@ -479,7 +557,7 @@ def _create_auth_finish_request(host, auth_info, sso_token, version):
     root = ConfigAuth(
         {"client": "vpn", "type": "auth-reply", "aggregate-auth-version": "2"},
         Version({"who": "vpn"}, version),
-        DeviceId({"computer-name": hostname}, "linux-64"),
+        DeviceId({"computer-name": hostname}, resolve_client_platform(client_os)),
         SessionToken(),
         SessionId(),
         auth_info.opaque,
