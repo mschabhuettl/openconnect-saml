@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **The client now reports the platform it actually runs on.** The
+  `<device-id>` in both `config-auth` requests, the `User-Agent` of the
+  `requests` session used for the SAML handshake, and the `--useragent`
+  handed to the `openconnect` binary were all hardcoded to Linux — the
+  last one had a Windows branch keyed on `os.name == "nt"`, so macOS fell
+  through to it as well. A macOS client therefore announced itself as
+  `linux-64` / `AnyConnect Linux_64`, which a gateway's dynamic access
+  policy can legitimately grade differently from the real thing.
+
+  All four now come from one table, resolved once per connection, so the
+  User-Agent token and the `<device-id>` can never disagree (they use
+  different vocabularies: `mac-intel` pairs with `Darwin_i386`).
+  `platform.machine()` is deliberately not consulted — Cisco's macOS
+  client is a universal binary with no arm64 token, so Apple Silicon is
+  `mac-intel` too. Windows keeps sending the historical `Win` token, which
+  makes this change a byte-for-byte no-op outside macOS.
+
+### Added
+
+- `--client-os {auto,linux,linux-64,win,mac-intel,android,apple-ios}` (and
+  `$OPENCONNECT_SAML_CLIENT_OS`) to override the reported platform.
+  `--client-os linux-64` restores the previous hardcoded behaviour exactly,
+  which is the escape hatch if a gateway DAP rule rejects the real OS. The
+  flag does *not* pass `--os` to the `openconnect` binary; `--os` keeps
+  falling through to it via the usual argument passthrough.
+
 ## [0.25.0] – 2026-05-26
 
 ### Security

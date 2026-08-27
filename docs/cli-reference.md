@@ -158,6 +158,13 @@ your phone authenticator than persist a secret on the machine.
                            are auto-allowed; others are refused.
 --timeout SECONDS          HTTP timeout (default: 30)
 --ac-version STRING        AnyConnect Version (default: 4.7.00136)
+--client-os PLATFORM       Platform reported to the gateway, in both the
+                           config-auth <device-id> and the AnyConnect
+                           User-Agent. One of auto, linux, linux-64, win,
+                           mac-intel, android, apple-ios (default: auto,
+                           detected from the host OS). Does not pass --os
+                           to openconnect. Also settable via
+                           $OPENCONNECT_SAML_CLIENT_OS
 --no-history               Don't log this session to history.jsonl
 --authenticate FORMAT      Auth only, output cookie (json | shell)
 --detach, --background     Run openconnect in the background; stop with

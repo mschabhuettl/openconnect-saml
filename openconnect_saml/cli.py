@@ -9,6 +9,10 @@ import sys
 import openconnect_saml
 from openconnect_saml import __version__, app, config
 
+# Platform tokens accepted by --client-os. Same vocabulary as openconnect's
+# --os, plus "auto" (the default) meaning "detect from the host OS".
+_CLIENT_OS_CHOICES = ("auto", "linux", "linux-64", "win", "mac-intel", "android", "apple-ios")
+
 
 def _add_connection_args(parser):
     """Add common connection arguments to a parser (used by both legacy and connect)."""
@@ -148,6 +152,26 @@ def _add_connection_args(parser):
     )
     parser.add_argument(
         "--ac-version", help="AnyConnect Version (default: %(default)s)", default="4.7.00136"
+    )
+    # Sanitise the env default *before* argparse sees it, so a typo in the
+    # variable is ignored instead of aborting the run with a confusing
+    # "invalid choice" message.
+    _env_client_os = (os.environ.get("OPENCONNECT_SAML_CLIENT_OS") or "").strip().lower()
+    parser.add_argument(
+        "--client-os",
+        dest="client_os",
+        choices=_CLIENT_OS_CHOICES,
+        default=_env_client_os if _env_client_os in _CLIENT_OS_CHOICES else None,
+        help=(
+            "Platform reported to the VPN gateway, both in the config-auth "
+            "<device-id> and in the AnyConnect User-Agent. Default: autodetected "
+            "from the host OS (mac-intel on macOS, win on Windows, linux-64 "
+            "elsewhere). Same vocabulary as openconnect's --os, but this flag does "
+            "NOT pass --os to the openconnect binary -- pass --os yourself if you "
+            "want that. Use --client-os linux-64 to restore the old hardcoded "
+            "behaviour if a gateway DAP rule rejects your real OS. Also settable "
+            "via $OPENCONNECT_SAML_CLIENT_OS."
+        ),
     )
     parser.add_argument(
         "-l",

@@ -56,7 +56,7 @@ _openconnect_saml() {
     local connect_flags="--server --proxy --headless --browser --authgroup --usergroup
         --authenticate --browser-display-mode --chrome-channel --chrome-executable
         --on-connect --on-disconnect
-        --ac-version --log-level --user --reset-credentials --totp-source
+        --ac-version --client-os --log-level --user --reset-credentials --totp-source
         --2fauth-url --2fauth-token --2fauth-account-id --reconnect
         --max-retries --no-sudo --csd-wrapper --ssl-legacy --timeout
         --window-size --profile --profile-selector --version --help"
