@@ -11,10 +11,13 @@ mode 0600. Each file contains:
 - ``profile`` — profile name (or ``"default"``)
 - ``server`` — VPN gateway URL / host
 - ``user`` — username (no secrets ever)
-- ``pid`` — pid of the openconnect process
+- ``pid`` — pid of the controller, or of the tunnel for older/detached sessions
 - ``started_at`` — ISO 8601 UTC timestamp
 - ``interface`` — tunnel interface name when known (filled in best-effort)
 - ``parent_pid`` — pid of the openconnect-saml supervisor (if detached)
+- ``controlled`` — the recorded process accepts disconnect/logout requests
+- ``elevation`` — sudo/doas used for a privileged detached tunnel
+- ``reusable`` — disconnect without logging the VPN session out
 
 Stale records (pid no longer running) are pruned on read.
 """
@@ -26,6 +29,7 @@ import json
 import os
 import re
 import signal
+import subprocess
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -60,6 +64,9 @@ class Session:
     user: str = ""
     pid: int = 0
     parent_pid: int = 0
+    controlled: bool = False
+    elevation: str = ""
+    reusable: bool = False
     interface: str = ""
     started_at: str = field(default_factory=lambda: datetime.now(tz=timezone.utc).isoformat())
 
@@ -71,6 +78,9 @@ class Session:
             user=str(d.get("user", "")),
             pid=int(d.get("pid", 0)),
             parent_pid=int(d.get("parent_pid", 0)),
+            controlled=d.get("controlled") is True,
+            elevation=str(d.get("elevation", "")),
+            reusable=d.get("reusable") is True,
             interface=str(d.get("interface", "")),
             started_at=str(d.get("started_at", "")),
         )
@@ -158,35 +168,85 @@ def remove(profile: str) -> bool:
     return False
 
 
-def kill(profile: str, *, timeout: float = 10.0) -> bool:
-    """Send SIGTERM to the recorded openconnect process for ``profile``.
+def _signal_session(sess, sig, *, interactive=True):
+    try:
+        os.kill(sess.pid, sig)
+        return True
+    except PermissionError:
+        if sess.elevation not in ("sudo", "doas"):
+            return False
+        command = [sess.elevation]
+        if sess.elevation == "sudo":
+            command.extend(["-p", "[sudo] Local system password for %u (not the VPN password): "])
+        if not interactive or sig == getattr(signal, "SIGKILL", None):
+            command.append("-n")
+        return (
+            subprocess.run(  # nosec - positive recorded PID, fixed kill executable
+                [*command, "/bin/kill", f"-{int(sig)}", str(sess.pid)],
+                check=False,
+            ).returncode
+            == 0
+        )
 
-    Waits up to ``timeout`` seconds for it to exit (then SIGKILL). Returns
-    True if a process was found and signalled, False if no live record.
+
+def _wait_for_exit(pid, timeout):
+    deadline = time.monotonic() + timeout
+    while _pid_alive(pid) and time.monotonic() < deadline:
+        time.sleep(0.1)
+    return not _pid_alive(pid)
+
+
+def kill(profile: str, *, timeout: float = 10.0, logout: bool = False) -> bool:
+    """Request disconnect, or explicitly log out, and wait for cleanup.
+
+    Controllers bound their own shutdown; never kill one while it is cleaning
+    up the privileged child. Legacy sessions retain their SIGTERM behavior.
     """
     sess = load(profile)
     if not sess:
         return False
     try:
-        os.kill(sess.pid, signal.SIGTERM)
-    except (ProcessLookupError, PermissionError):
+        sig = signal.SIGTERM
+        if logout and sess.controlled:
+            sig = signal.SIGUSR1
+        elif not logout and sess.reusable and not sess.controlled and os.name == "posix":
+            sig = signal.SIGHUP
+        if not _signal_session(sess, sig):
+            logger.warning(
+                "Cannot signal the VPN process; session is still active", profile=profile
+            )
+            return False
+    except ProcessLookupError:
         remove(profile)
         return False
+    except PermissionError:
+        logger.warning("Cannot signal the VPN process; session is still active", profile=profile)
+        return False
 
-    deadline = time.monotonic() + timeout
-    while _pid_alive(sess.pid) and time.monotonic() < deadline:
-        time.sleep(0.1)
-
-    if _pid_alive(sess.pid):
+    if not _wait_for_exit(sess.pid, timeout):
+        if sess.controlled:
+            logger.warning("VPN cleanup is still in progress", profile=profile)
+            return False
+        if sig == getattr(signal, "SIGHUP", None):
+            logger.warning("VPN disconnect timed out; forcing logout", profile=profile)
+            with contextlib.suppress(ProcessLookupError):
+                if not _signal_session(sess, signal.SIGTERM, interactive=False):
+                    return False
+            _wait_for_exit(sess.pid, min(5, max(0, timeout)))
         # Still alive — escalate to SIGKILL on POSIX. On Windows ``signal``
         # has no ``SIGKILL`` and ``os.kill(pid, SIGTERM)`` is already an
         # unconditional ``TerminateProcess``, so the escalation step is a
         # no-op there. We just skip it instead of crashing on the missing
         # attribute.
         sigkill = getattr(signal, "SIGKILL", None)
-        if sigkill is not None:
-            with contextlib.suppress(ProcessLookupError, PermissionError):
-                os.kill(sess.pid, sigkill)
+        if sigkill is not None and _pid_alive(sess.pid):
+            with contextlib.suppress(ProcessLookupError):
+                if not _signal_session(sess, sigkill):
+                    return False
+            if not _wait_for_exit(sess.pid, 1):
+                return False
 
-    remove(profile)
+    current = load(profile)
+    if current and (current.pid, current.parent_pid) == (sess.pid, sess.parent_pid):
+        remove(profile)
     return True

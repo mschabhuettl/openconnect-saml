@@ -80,6 +80,16 @@ class TestDisconnectCommand:
             rc = _handle_disconnect_command(args)
         assert rc == 1
 
+    def test_disconnect_all_reports_partial_failure(self):
+        with (
+            patch(
+                "openconnect_saml.sessions.list_active",
+                return_value=[_mk_session("work"), _mk_session("home")],
+            ),
+            patch("openconnect_saml.sessions.kill", side_effect=[True, False]),
+        ):
+            assert _handle_disconnect_command(SimpleNamespace(profile_name=None, all=True)) == 1
+
     def test_disconnect_named_profile(self, capsys):
         args = SimpleNamespace(profile_name="work", all=False)
         with patch("openconnect_saml.sessions.kill", return_value=True) as mk:
@@ -87,6 +97,18 @@ class TestDisconnectCommand:
         assert rc == 0
         mk.assert_called_once_with("work")
         assert "Disconnected 'work'" in capsys.readouterr().out
+
+    def test_failed_disconnect_reports_session_still_active(self, capsys):
+        args = SimpleNamespace(profile_name="work", all=False)
+        with (
+            patch("openconnect_saml.sessions.kill", return_value=False),
+            patch("openconnect_saml.sessions.load", return_value=_mk_session("work")),
+        ):
+            assert _handle_disconnect_command(args) == 1
+        output = capsys.readouterr()
+        assert "session is still active" in output.err
+        assert "No active session" not in output.out
+        assert "Did you mean" not in output.out
 
     def test_disconnect_unknown_profile_suggests_close_match(self, capsys):
         args = SimpleNamespace(profile_name="wrok", all=False)

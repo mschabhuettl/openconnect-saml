@@ -107,7 +107,7 @@ writing them into the NM file.
 
 ```python
 if target and target != "-":
-    Path(target).write_text(payload)         # OSError not caught
+    Path(target).write_text(payload)  # OSError not caught
     print(f"✓ Wrote {len(entries)} entries to {target}")
 ```
 

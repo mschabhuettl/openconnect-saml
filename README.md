@@ -55,6 +55,14 @@ openconnect-saml --server vpn.example.com --headless --user user@example.com
 
 ## Features
 
+- **VPN cookie cache** — try a saved cookie before starting SSO and refresh it
+  through the browser if the gateway rejects it. With caching enabled,
+  connections on macOS/Linux keep the session after Ctrl-C or `disconnect`,
+  including detached connections. See [cookie caching](docs/browsers.md#vpn-cookie-cache).
+- **Saved login settings** — remember usernames and select browser-managed
+  password entry. A dedicated Chrome profile retains cookies and extensions.
+  Profiles can save extra OpenConnect arguments for
+  CLI and TUI use. See [configuration](docs/configuration.md#saved-username-and-chrome-settings).
 - **Three browser backends** — Qt6 WebEngine, Chromium via Playwright,
   or full headless. Hardware-key WebAuthn works in `--browser chrome`
   out of the box. With `--chrome-channel chrome|msedge` Playwright

@@ -59,6 +59,8 @@ Requires `pip install "openconnect-saml[chrome]"` (or AUR
 Node.js library) and a one-time `playwright install chromium` to
 download the ~150 MB Chromium bundle.
 
+Chrome launches with its sandbox enabled.
+
 ### Skipping the Playwright Chromium download
 
 If you already have Chrome / Edge installed system-wide, point
@@ -112,3 +114,91 @@ Or persistently in `config.toml`:
 window_width = 1024
 window_height = 768
 ```
+
+## VPN cookie cache
+
+VPN cookie caching and session reuse apply to the existing AnyConnect SAML flow.
+This wrapper does not implement authentication for other OpenConnect VPN
+protocols. Passing `--protocol` to OpenConnect does not change the wrapper's
+authentication flow.
+
+VPN cookies are cached by default in the OS keyring, separately for each
+gateway, login group, username, and profile. The cookie, final gateway URL,
+and certificate fingerprint are saved together. Cookies never go into
+`config.toml`; if no keyring is available, login continues without caching.
+
+On the next foreground connection, or detached connection on macOS/Linux,
+the saved cookie is sent to OpenConnect
+before opening a browser or prompting for credentials. If the gateway rejects
+it, the entry is removed and browser SSO is attempted once. Network and local
+setup errors do not trigger a login. `--reconnect` also uses this behavior.
+
+- `--forget-token`: delete the entry for this account/gateway and log in again.
+- `--no-token-cache`: skip cache reads and writes for this invocation.
+- `token_cache = false` in top-level config: disable caching persistently.
+
+`--forget-token` does not clear your browser's other cookies, saved preferences,
+or extensions. Existing browser SSO state may still complete a fresh VPN login.
+
+Auth-only (`--authenticate`), detached connections on Windows, and kill-switch
+connections use fresh authentication. Kill-switch authentication finishes
+before enabling the firewall, which would otherwise block SSO refresh.
+
+On macOS/Linux, connections with caching enabled keep the server
+session when you press Ctrl-C or run `disconnect PROFILE`. The tunnel stops
+and its routing script restores the network; the next connection tries the
+saved cookie. Use `disconnect PROFILE --logout` to log the session out instead.
+Shutdown has a timeout, with forced logout as a fallback if cleanup stalls.
+
+Server expiration and revocation still apply. Connections with caching disabled
+retain normal logout behavior.
+`--detach` leaves the tunnel running after the launcher exits. See
+[OpenConnect's signal documentation](https://www.infradead.org/openconnect/manual.html).
+
+On Windows, session preservation after Ctrl-C or `disconnect` is not implemented.
+Foreground connections can try a cached cookie when a keyring is available,
+but reuse after disconnect is not guaranteed. Detached connections use fresh
+authentication and return without confirming tunnel startup. Live Windows VPN
+authentication, cached-cookie refresh, username-only login, and persistent Chrome
+profiles have not been manually verified.
+
+## Persistent Chrome profiles
+
+Use a dedicated profile to retain browser cookies, settings, and extensions:
+
+```bash
+openconnect-saml --server vpn.example.com --browser chrome \
+  --chrome-channel chrome \
+  --chrome-user-data-dir "$HOME/.local/share/openconnect-saml/work-chrome" \
+  --user user@example.com --username-only
+```
+
+`--username-only` fills the username and leaves password entry, MFA, and form
+submission to you and the browser. `--user` alone still prompts for a missing
+VPN password in the terminal. Save these options in
+[config](configuration.md#saved-username-and-chrome-settings) to avoid repeating them.
+
+Closing the login window after SSO completes still uses the completed login.
+Closing it before a completion cookie is available exits without connecting.
+After SSO, sudo may ask for your computer's account password to create the
+tunnel. This local authorization is separate from VPN login and token reuse.
+
+Use a separate directory from your everyday Chrome profile. Playwright does
+not support automating Chrome's default profile, and two running browser
+instances cannot share one user-data directory. Close the dedicated browser
+before connecting again.
+
+To install extensions, open the same dedicated profile manually first:
+
+```bash
+open -na "Google Chrome" --args \
+  --user-data-dir="$HOME/.local/share/openconnect-saml/work-chrome"
+```
+
+Install the extension, complete its authorization, then quit Chrome before
+connecting. Subsequent login windows reuse that profile and allow installed
+extensions. Apple's iCloud Passwords extension still needs user authorization;
+its full login flow has not been verified by this project. Chrome may also
+request macOS Keychain access. See
+[Apple's extension setup](https://support.apple.com/guide/passwords/get-extensions-mchlf7ac261e/mac)
+and [Playwright persistent contexts](https://playwright.dev/python/docs/api/class-browsertype#browser-type-launch-persistent-context).

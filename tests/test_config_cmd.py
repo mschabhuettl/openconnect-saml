@@ -14,6 +14,10 @@ from openconnect_saml import config_cmd
 @pytest.fixture
 def tmp_config_dir(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    # pyxdg caches these at import time; changing only the environment still
+    # searches the real home directory and makes tests depend on local files.
+    monkeypatch.setattr(config_cmd.xdg.BaseDirectory, "xdg_config_home", str(tmp_path))
+    monkeypatch.setattr(config_cmd.xdg.BaseDirectory, "xdg_config_dirs", [str(tmp_path)])
     cfg_dir = tmp_path / "openconnect-saml"
     cfg_dir.mkdir()
     yield cfg_dir
@@ -81,6 +85,25 @@ user_group = "engineering"
         p = write_config(tmp_config_dir, "this is = not valid = toml")
         issues = config_cmd.validate_config(p)
         assert any(s == "error" and "toml" in m.lower() for s, m in issues)
+
+    @pytest.mark.parametrize(
+        ("address_fields", "valid"),
+        [
+            ('address = "vpn.example.com"', True),
+            ('server = "vpn.example.com"', True),
+            ('address = "vpn.example.com"\nserver = "other.example.com"', True),
+            ('address = ""\nserver = "vpn.example.com"', False),
+        ],
+    )
+    def test_default_profile_address_compatibility(self, tmp_config_dir, address_fields, valid):
+        p = write_config(
+            tmp_config_dir,
+            f'[default_profile]\n{address_fields}\nuser_group = ""\nname = "VPN"\n',
+        )
+        issues = config_cmd.validate_config(p)
+        assert (not any(s == "error" for s, _ in issues)) == valid
+        if not valid:
+            assert ("error", "'default_profile' is missing 'address'") in issues
 
     def test_profile_missing_server(self, tmp_config_dir):
         p = write_config(
@@ -331,3 +354,15 @@ class TestHandler:
 
         rc = config_cmd.handle_config_command(Args())
         assert rc == 1
+
+
+def test_login_setting_booleans_are_visible_but_cookies_are_redacted():
+    data = {
+        "token_cache": True,
+        "username_only": True,
+        "session_token": "secret-cookie",
+    }
+    redacted = config_cmd._redact(data)
+    assert redacted["token_cache"] is True
+    assert redacted["username_only"] is True
+    assert redacted["session_token"] == "***"

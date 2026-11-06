@@ -42,14 +42,31 @@ openconnect-saml sessions list --json   # machine-readable
 # Stop one
 openconnect-saml disconnect lab
 
+# Disconnect and log the server session out
+openconnect-saml disconnect lab --logout
+
 # Stop everything
 openconnect-saml disconnect --all
 ```
 
-`--detach` and `--background` are aliases. `--wait SECONDS` blocks the
-supervisor process until a tunnel interface (`tun*` / `utun*`)
-appears, useful for scripts that depend on the tunnel being up before
-the next step.
+`--detach` and `--background` are aliases. On macOS/Linux, local sudo/doas
+authorization happens before detaching. OpenConnect backgrounds itself after
+startup; the launcher records the actual VPN PID and returns only after
+confirmation. Startup errors are reported with a nonzero exit status.
+`--wait SECONDS` limits this startup wait; zero adds no deadline.
+Subsequent OpenConnect messages go to the system log.
+
+Cached-token reuse and `disconnect` preservation also apply to detached
+connections on macOS/Linux. `disconnect PROFILE --logout` explicitly logs out.
+A root-owned background tunnel may require local sudo/doas authorization
+to disconnect. A temporary CLI `--kill-switch` requires foreground mode;
+detached use requires a persistent kill-switch policy in config.
+
+The launcher does not keep foreground duration tracking or `on_disconnect`
+hooks running after it exits. Windows retains process launch without native
+startup confirmation, uses fresh authentication for detached connections, and
+does not implement session preservation on disconnect. Live Windows VPN use
+has not been manually verified.
 
 ### Profile groups
 
@@ -65,8 +82,8 @@ openconnect-saml groups remove office
 ```
 
 `groups connect` runs each member through the regular ``connect``
-flow (with `--detach`), so per-profile settings, kill-switch, hooks,
-and history all behave the same way.
+flow with `--detach`, including saved browser settings, credentials, and
+routes. The detached lifecycle limits described above also apply to groups.
 
 Session state lives under
 `$XDG_STATE_HOME/openconnect-saml/sessions/<profile>.json` (mode
@@ -77,9 +94,6 @@ username, openconnect pid, start timestamp — never any secrets.
 both surface the same view regardless of whether you're attached to
 the connect process or not.
 
-> **Note**: `--detach` works best when sudo is already cached or set
-> to `NOPASSWD` for `openconnect`. Otherwise the password prompt
-> appears after the supervisor has already exited.
 
 ## Auto-reconnect
 

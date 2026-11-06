@@ -323,6 +323,7 @@ _SETTABLE_FIELDS: dict[str, str] = {
     "user_group": "str",
     "name": "str",
     "browser": "str_or_clear",
+    "username_only": "bool_or_clear",
     "notify": "bool_or_clear",
     "on_connect": "str_or_clear",
     "on_disconnect": "str_or_clear",

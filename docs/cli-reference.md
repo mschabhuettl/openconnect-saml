@@ -62,6 +62,7 @@ both override the XDG default for one invocation.
 --headless                 No browser, terminal-only authentication
 --browser BACKEND          qt | chrome | headless
 --browser-display-mode M   shown | hidden
+--chrome-user-data-dir P   Dedicated persistent Chrome profile (cookies/extensions)
 --chrome-channel CHANNEL   With --browser=chrome, use a system Chrome / Edge
                            instead of Playwright's bundled Chromium.
                            Values: chrome | chrome-beta | chrome-dev | chrome-canary |
@@ -75,6 +76,9 @@ both override the XDG default for one invocation.
 
 ```
 -u, --user NAME            Authenticate as the given user
+--username-only            Fill username; let the browser handle password and MFA
+--no-token-cache           Skip saved VPN session cookie reads and writes
+--forget-token             Delete this account/gateway's cached cookie and log in again
 --reset-credentials        Delete saved credentials from keyring and exit
 --auth-only                Friendly alias for --authenticate shell (auth, print cookie, exit)
 --auth-script PATH         External authentication script (replaces the built-in
@@ -162,17 +166,22 @@ your phone authenticator than persist a secret on the machine.
 --authenticate FORMAT      Auth only, output cookie (json | shell)
 --detach, --background     Run openconnect in the background; stop with
                            'openconnect-saml disconnect [PROFILE]'
---wait SECONDS             With --detach: block up to SECONDS until the tunnel
-                           interface appears before returning (default: 0)
+--wait SECONDS             With --detach on macOS/Linux: limit startup wait
+                           (default: 0, no additional startup deadline)
 ```
 
 ## `disconnect` subcommand
 
 ```bash
 openconnect-saml disconnect [PROFILE]    # stop one session
+openconnect-saml disconnect PROFILE --logout  # also log the server session out
 openconnect-saml disconnect --all        # stop every active session
 openconnect-saml disconnect              # equivalent to --all when no profile
 ```
+
+With cookie caching enabled, connections on macOS/Linux keep the session for
+reuse on Ctrl-C and `disconnect`, including detached connections. `--logout`
+explicitly logs out.
 
 ## `sessions` subcommand
 
@@ -212,7 +221,8 @@ openconnect-saml profiles migrate [--apply]
 **`profiles set NAME FIELD VALUE`** — programmatic field editor. Allowed
 fields: `server`, `user_group`, `name`, `browser`, `notify`, `on_connect`,
 `on_disconnect`, `cert`, `cert_key`, `username`, `totp_source`,
-`auth_script`. Booleans accept `true|false|yes|no|1|0`. Empty string
+`auth_script`, `username_only`.
+Booleans accept `true|false|yes|no|1|0`. Empty string
 clears optional fields.
 
 **`profiles copy SRC DST`** duplicates an existing profile. The copy is

@@ -126,3 +126,72 @@ class TestKill:
         assert signals_sent[0][0] == os.getpid()
         # Record should be cleaned up
         assert not sessions.session_file("work").exists()
+
+    def test_permission_denied_keeps_active_session_record(self, tmp_state_home, monkeypatch):
+        sessions.record(_make(pid=os.getpid()))
+
+        def deny_signal(pid, sig):
+            if sig:
+                raise PermissionError
+
+        monkeypatch.setattr(sessions.os, "kill", deny_signal)
+        assert sessions.kill("work") is False
+        assert sessions.load("work") is not None
+
+    def test_controller_timeout_retains_record_and_does_not_force_kill(
+        self, tmp_state_home, monkeypatch
+    ):
+        import signal
+
+        sessions.record(_make(pid=os.getpid(), controlled=True))
+        signals = []
+        monkeypatch.setattr(
+            sessions.os, "kill", lambda pid, sig: signals.append(sig) if sig else None
+        )
+        assert sessions.kill("work", timeout=0) is False
+        assert signals == [signal.SIGTERM]
+        assert sessions.load("work") is not None
+
+    def test_privileged_detached_tunnel_uses_recorded_elevation(self, tmp_state_home, monkeypatch):
+        import signal
+        from types import SimpleNamespace
+
+        sessions.record(_make(pid=os.getpid(), elevation="sudo"))
+        stopped = False
+
+        def denied(pid, sig):
+            if sig:
+                raise PermissionError
+            if stopped:
+                raise ProcessLookupError
+
+        commands = []
+
+        def elevated(command, **options):
+            nonlocal stopped
+            commands.append(command)
+            stopped = True
+            return SimpleNamespace(returncode=0)
+
+        monkeypatch.setattr(sessions.os, "kill", denied)
+        monkeypatch.setattr(sessions.subprocess, "run", elevated)
+        assert sessions.kill("work") is True
+        assert commands[0][0:2] == ["sudo", "-p"]
+        assert commands[0][-3:] == ["/bin/kill", f"-{int(signal.SIGTERM)}", str(os.getpid())]
+
+    @pytest.mark.skipif(os.name != "posix", reason="Session preservation uses SIGHUP")
+    def test_detached_shutdown_tries_logout_before_force_kill(self, tmp_state_home, monkeypatch):
+        import signal
+
+        sessions.record(_make(pid=os.getpid(), reusable=True))
+        signals = []
+
+        def signal_process(pid, sig):
+            if sig:
+                signals.append(sig)
+            elif signal.SIGTERM in signals:
+                raise ProcessLookupError
+
+        monkeypatch.setattr(sessions.os, "kill", signal_process)
+        assert sessions.kill("work", timeout=0)
+        assert signals == [signal.SIGHUP, signal.SIGTERM]

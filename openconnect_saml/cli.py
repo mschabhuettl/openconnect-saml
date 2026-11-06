@@ -118,6 +118,27 @@ def _add_connection_args(parser):
         metavar="PATH",
         default=None,
     )
+    parser.add_argument(
+        "--chrome-user-data-dir",
+        metavar="PATH",
+        default=None,
+        help="Keep Chrome cookies, storage and extensions in a dedicated persistent profile.",
+    )
+    parser.add_argument(
+        "--no-token-cache",
+        action="store_true",
+        help="Skip reading and writing saved VPN session cookies.",
+    )
+    parser.add_argument(
+        "--forget-token",
+        action="store_true",
+        help="Delete this account/gateway's saved VPN session and authenticate again.",
+    )
+    parser.add_argument(
+        "--username-only",
+        action="store_true",
+        help="Fill --user without prompting for a password or TOTP; log in in the browser.",
+    )
     parser.add_argument("--on-connect", help="Command to run after VPN connects", default="")
     parser.add_argument("--on-disconnect", help="Command to run when disconnecting", default="")
     parser.add_argument(
@@ -132,7 +153,7 @@ def _add_connection_args(parser):
         dest="detach",
         action="store_true",
         default=False,
-        help="Daemonize after authentication; openconnect runs in the background. "
+        help="Run OpenConnect in the background; on macOS/Linux, wait for startup confirmation. "
         "Stop with 'openconnect-saml disconnect [PROFILE]'",
     )
     parser.add_argument(
@@ -142,8 +163,8 @@ def _add_connection_args(parser):
         default=0,
         metavar="SECONDS",
         help=(
-            "With --detach: block up to SECONDS until the tunnel interface "
-            "is up before returning. Default 0 (return immediately)."
+            "With --detach on macOS/Linux: limit startup wait to SECONDS. "
+            "Default 0 (no additional startup deadline)."
         ),
     )
     parser.add_argument(
@@ -568,7 +589,7 @@ def create_argparser():
         help=(
             "Field to set: server, user_group, name, browser, notify, "
             "on_connect, on_disconnect, cert, cert_key, username, totp_source, "
-            "auth_script"
+            "auth_script, username_only"
         ),
     )
     set_parser.add_argument(
@@ -635,6 +656,11 @@ def create_argparser():
     )
     disconnect_parser.add_argument(
         "--all", action="store_true", default=False, help="Disconnect every active session"
+    )
+    disconnect_parser.add_argument(
+        "--logout",
+        action="store_true",
+        help="Also log out the server session instead of keeping it for reuse",
     )
 
     # sessions
@@ -1165,10 +1191,11 @@ def _handle_groups_command(args):
 
 
 def _handle_disconnect_command(args):
-    from openconnect_saml.sessions import kill, list_active
+    from openconnect_saml.sessions import kill, list_active, load
 
     profile = getattr(args, "profile_name", None)
     do_all = getattr(args, "all", False)
+    stop_options = {"logout": True} if getattr(args, "logout", False) else {}
 
     if do_all or not profile:
         sessions = list_active()
@@ -1177,14 +1204,17 @@ def _handle_disconnect_command(args):
             return 0
         ok = 0
         for sess in sessions:
-            if kill(sess.profile):
+            if kill(sess.profile, **stop_options):
                 print(f"Disconnected '{sess.profile}' (pid {sess.pid})")
                 ok += 1
-        return 0 if ok else 1
+        return 0 if ok == len(sessions) else 1
 
-    if kill(profile):
+    if kill(profile, **stop_options):
         print(f"Disconnected '{profile}'.")
         return 0
+    if load(profile) is not None:
+        print(f"Could not disconnect '{profile}'; the session is still active.", file=sys.stderr)
+        return 1
     import difflib
 
     available = [s.profile for s in list_active()]

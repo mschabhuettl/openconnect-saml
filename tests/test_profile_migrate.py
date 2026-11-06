@@ -5,6 +5,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
 from openconnect_saml import config, profiles
 
 
@@ -40,9 +42,10 @@ class TestMigrateDryRun:
 
 
 class TestMigrateApply:
-    def test_legacy_default_profile_migrated(self):
+    @pytest.mark.parametrize("address_key", ["address", "server"])
+    def test_legacy_default_profile_migrated(self, address_key):
         cfg = config.Config(
-            default_profile={"address": "vpn.example.com", "user_group": "", "name": "Old"}
+            default_profile={address_key: "vpn.example.com", "user_group": "", "name": "Old"}
         )
         saved = []
         with (

@@ -5,6 +5,56 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+These changes apply to the existing Cisco AnyConnect SAML workflow.
+They do not add support for other VPN protocols.
+
+Live VPN verification covered macOS with Chrome and SSO/Duo. Windows use remains
+unverified. Session preservation and confirmed native background startup are
+limited to macOS/Linux; Windows detached connections use fresh authentication
+and return without confirming tunnel startup.
+
+### Added
+
+- Keyring-backed VPN cookie caching, including the gateway URL and certificate
+  pin, with one browser SSO refresh after the gateway rejects a cached cookie.
+- Session reuse after Ctrl-C or `disconnect` on macOS/Linux when
+  caching is enabled, with bounded shutdown and explicit `disconnect --logout`.
+- Dedicated persistent Chrome profiles via `--chrome-user-data-dir`, retaining
+  SSO state and installed extensions while using the normal OS credential store.
+- Saved username-only browser login, Chrome channel/profile settings, and
+  per-profile OpenConnect arguments.
+
+### Fixed
+
+- Enable Chrome's sandbox for temporary and persistent browser profiles.
+- On macOS/Linux, detached connections authorize locally before native
+  background startup, report startup failures, and record the actual VPN PID.
+  They support cached-token reuse and explicit logout; root-owned tunnels
+  request local authorization when needed for disconnect.
+- Chrome username autofill handles Shibboleth inputs, custom username/NetID
+  labels, embedded login frames, and SSO popups while preserving manual input
+  and excluding unrelated persistent-profile tabs.
+- Closing Chrome after completed SSO retains the login result; closing an
+  incomplete login exits cleanly.
+- Named profiles supply their credentials directly to the browser, including
+  callers that do not copy profile fields into CLI arguments first.
+- Sudo password prompts identify the local system password separately from VPN
+  credentials.
+- Qt autofill no longer inserts absent credentials or overwrites manually entered
+  values; username-only mode leaves form submission and MFA choices to the user.
+- TUI disconnect stops the VPN it started, even after selecting another profile.
+- Failed disconnects report that the session is still active; permission errors
+  retain its session record.
+- Extra command-line OpenConnect options retain saved profile arguments,
+  including routing scripts.
+- Cached cookies retain the authenticated gateway path; connection cleanup
+  leaves a newer session record intact.
+- Config display keeps non-secret boolean policies visible while redacting cookies.
+- Legacy `[default_profile]` accepts the `server` spelling from older documentation;
+  saved configs retain `address`, and named profiles continue to use `server`.
+
 ## [0.25.0] – 2026-05-26
 
 ### Security
