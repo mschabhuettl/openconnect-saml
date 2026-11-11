@@ -2,12 +2,17 @@
 
 from unittest.mock import patch
 
+import pytest
+import toml
+
 from openconnect_saml.config import (
+    CONFIG_ENV_VAR,
     AutoFillRule,
     Config,
     Credentials,
     HostProfile,
     load,
+    save,
 )
 
 
@@ -28,6 +33,52 @@ class TestConfigLoading:
         mock_load.return_value = str(tmp_path)
         cfg = load()
         assert isinstance(cfg, Config)
+
+    @pytest.mark.parametrize(
+        "address_fields",
+        [
+            'address = "https://vpn.example.com"',
+            'server = "https://vpn.example.com"',
+            'address = "https://vpn.example.com"\nserver = "https://other.example.com"',
+        ],
+        ids=["original-address", "documented-server", "address-takes-precedence"],
+    )
+    def test_profile_config_round_trip(self, tmp_path, monkeypatch, address_fields):
+        path = tmp_path / "config.toml"
+        monkeypatch.setenv(CONFIG_ENV_VAR, str(path))
+        path.write_text(
+            f"""[default_profile]
+{address_fields}
+user_group = "employees"
+name = "Legacy VPN"
+
+[profiles.work]
+server = "https://work.example.com"
+user_group = "engineering"
+
+[profiles.work.credentials]
+username = "alice"
+"""
+        )
+
+        cfg = load()
+        assert cfg.default_profile is not None
+        assert cfg.default_profile.vpn_url == "https://vpn.example.com/employees"
+        assert cfg.default_profile.name == "Legacy VPN"
+        assert cfg.profiles["work"].server == "https://work.example.com"
+        assert cfg.profiles["work"].user_group == "engineering"
+        assert cfg.profiles["work"].credentials.username == "alice"
+
+        save(cfg)
+        saved = toml.loads(path.read_text())
+        assert saved["default_profile"] == {
+            "address": "https://vpn.example.com",
+            "user_group": "employees",
+            "name": "Legacy VPN",
+        }
+        assert saved["profiles"]["work"]["server"] == "https://work.example.com"
+        assert "address" not in saved["profiles"]["work"]
+        assert load().as_dict() == cfg.as_dict()
 
     @patch("openconnect_saml.config.xdg.BaseDirectory.load_first_config")
     def test_load_corrupt_config_file(self, mock_load, tmp_path):
@@ -70,6 +121,11 @@ class TestConfigNoneValues:
 
 class TestHostProfile:
     """HostProfile edge cases."""
+
+    def test_documented_server_alias_keeps_input_unchanged(self):
+        raw = {"server": "vpn.example.com", "user_group": "", "name": "VPN"}
+        assert HostProfile.from_dict(raw).address == "vpn.example.com"
+        assert raw == {"server": "vpn.example.com", "user_group": "", "name": "VPN"}
 
     def test_empty_address(self):
         hp = HostProfile("", "", "")

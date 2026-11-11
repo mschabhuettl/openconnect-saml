@@ -111,6 +111,16 @@ class HostProfile(ConfigNode):
     user_group = attr.ib(converter=str)
     name = attr.ib(converter=str)
 
+    @classmethod
+    def from_dict(cls, d):
+        """Accept the older documented spelling without changing the saved format."""
+        if d is None:
+            return None
+        values = dict(d)
+        if "server" in values:
+            values.setdefault("address", values.pop("server"))
+        return cls(**values)
+
     @property
     def vpn_url(self):
         parts = urlparse(self.address)
@@ -403,10 +413,12 @@ class ProfileConfig(ConfigNode):
     keepassxc = attr.ib(default=None, converter=_convert_keepassxc)
     routes = attr.ib(factory=list, converter=_convert_str_list)
     no_routes = attr.ib(factory=list, converter=_convert_str_list)
+    openconnect_args = attr.ib(factory=list, converter=_convert_str_list)
 
     # Per-profile overrides (v0.11.0+). All optional; ``None`` means
     # "fall back to the top-level config / CLI default".
     browser = attr.ib(default=None, converter=_convert_optional_str)
+    username_only = attr.ib(default=None, converter=_convert_optional_bool)
     notify = attr.ib(default=None, converter=_convert_optional_bool)
     on_connect = attr.ib(default=None, converter=_convert_optional_str)
     on_disconnect = attr.ib(default=None, converter=_convert_optional_str)
@@ -431,6 +443,7 @@ class ProfileConfig(ConfigNode):
         # Drop optional overrides that are explicitly None to keep TOML clean
         for key in (
             "browser",
+            "username_only",
             "notify",
             "on_connect",
             "on_disconnect",
@@ -491,6 +504,10 @@ class Config(ConfigNode):
     active_profile = attr.ib(default=None)
     notifications = attr.ib(default=False, converter=bool)
     connection_history = attr.ib(default=True, converter=bool)
+    token_cache = attr.ib(default=True, converter=bool)
+    username_only = attr.ib(default=False, converter=bool)
+    chrome_channel = attr.ib(default=None, converter=_convert_optional_str)
+    chrome_user_data_dir = attr.ib(default=None, converter=_convert_optional_str)
     kill_switch = attr.ib(default=None, converter=_convert_killswitch)
 
     @classmethod
@@ -506,6 +523,12 @@ class Config(ConfigNode):
     def get_profile(self, name):
         """Get a named profile, or None."""
         return self.profiles.get(name)
+
+    def get_setting(self, setting, profile_name=None):
+        """Resolve an optional profile override before the top-level setting."""
+        profile = self.get_profile(profile_name) if profile_name else None
+        override = getattr(profile, setting, None)
+        return override if override is not None else getattr(self, setting)
 
     def add_profile(self, name, profile):
         """Add or update a named profile."""

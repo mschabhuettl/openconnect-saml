@@ -41,7 +41,7 @@ uv run pytest --cov=openconnect_saml           # with coverage
 ```
 
 CI runs on Ubuntu (Python 3.10–3.13) and Windows (3.12). Coverage
-gate: ≥ 50 % (`pyproject.toml` → `[tool.coverage.report]`).
+gate: ≥ 73 % (`pyproject.toml` → `[tool.coverage.report]`).
 
 ## Project layout
 
@@ -50,6 +50,8 @@ openconnect_saml/
 ├── cli.py                # argparse + dispatch
 ├── app.py                # main run-loop, reconnect, kill-switch wiring
 ├── authenticator.py      # SAML XML protocol with the VPN gateway
+├── token_cache.py        # VPN cookies, gateway URLs, and pins in the OS keyring
+├── tunnel.py             # POSIX tunnel supervision and bounded shutdown
 ├── saml_authenticator.py # SAML browser flow (Qt)
 ├── browser/              # Qt + Playwright/Chromium browser backends
 │   ├── browser.py

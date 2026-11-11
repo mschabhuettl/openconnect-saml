@@ -98,13 +98,14 @@ class _FakeLocator:
 
 class _FakePage:
     def __init__(self):
+        self.frames = [self]
         self.locators = {
             "input[id=username]": _FakeLocator(visible=True),
             "input[type=submit]": _FakeLocator(visible=True),
         }
 
     def locator(self, selector):
-        return self.locators.get(selector, _FakeLocator())
+        return self.locators.get(selector.removesuffix(":visible"), _FakeLocator())
 
 
 @pytest.mark.asyncio

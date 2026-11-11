@@ -131,6 +131,7 @@ class InteractiveTUI:
         self.profiles = sorted(dict(self.cfg.list_profiles()))
         self.cursor = 0 if self.profiles else -1
         self.proc: subprocess.Popen | None = None
+        self.connected_profile: str | None = None
         self.message: str = ""
         self.message_until: float = 0
         self.view: str = "main"  # main | history
@@ -168,12 +169,31 @@ class InteractiveTUI:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
+        self.connected_profile = name
         self._flash(f"Connecting to '{name}'… (check Status panel for live state)")
 
     def _disconnect(self) -> None:
         if self.proc and self.proc.poll() is None:
-            self.proc.terminate()
-            self._flash("Disconnect signal sent — connection will close shortly.")
+            name = self.connected_profile
+            if not name:
+                self._flash("No managed profile to disconnect.")
+                return
+            # Stop the VPN process recorded for the profile this TUI launched.
+            # Terminating only its Python supervisor can leave the tunnel up.
+            try:
+                result = subprocess.run(
+                    [sys.executable, "-m", "openconnect_saml.cli", "disconnect", name],
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                )
+                self._flash(
+                    f"Disconnected '{name}'."
+                    if result.returncode == 0
+                    else "Could not disconnect; if still authenticating, close the login window."
+                )
+            except (OSError, subprocess.TimeoutExpired):
+                self._flash("Disconnect did not complete; check 'sessions list'.")
         else:
             self._flash("No managed connection to disconnect.")
 

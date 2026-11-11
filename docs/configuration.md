@@ -56,9 +56,26 @@ Current registered migrations:
 ## TOML structure
 
 ```toml
+# Behaviour flags
+notifications = false
+connection_history = true
+token_cache = true
+username_only = false
+# Optional persistent system Chrome profile
+# chrome_channel = "chrome"
+# chrome_user_data_dir = "~/.local/share/openconnect-saml/chrome"
+on_connect = ""
+on_disconnect = ""
+timeout = 30
+window_width = 800
+window_height = 600
+
+# Marks the most recently connected profile (set automatically)
+active_profile = "work"
+
 # Default profile picked when no name / --profile is given
 [default_profile]
-server = "vpn.example.com"
+address = "vpn.example.com"
 user_group = ""
 name = "My VPN"
 
@@ -71,6 +88,7 @@ totp_source = "local"        # local | 2fauth | bitwarden | 1password | pass | n
 server = "vpn.company.com"
 user_group = "employees"
 name = "Work VPN"
+openconnect_args = []        # Keep existing --script / routing arguments here
 routes = ["10.0.0.0/8"]
 no_routes = ["192.168.0.0/16"]
 
@@ -105,22 +123,43 @@ allow_lan = false
 ipv6 = true
 dns_servers = ["1.1.1.1", "9.9.9.9"]
 
-# Behaviour flags
-notifications = false
-connection_history = true
-on_connect = ""
-on_disconnect = ""
-timeout = 30
-window_width = 800
-window_height = 600
-
-# Marks the most recently connected profile (set automatically)
-active_profile = "work"
 ```
 
 See [authentication.md](authentication.md) for full TOTP-provider
 config details and [networking.md](networking.md) for kill-switch
 options.
+
+`[default_profile]` uses `address`, as in the original saved config format.
+The `server` spelling from older documentation is also accepted there;
+if both are present, `address` takes precedence. Saving uses `address`.
+Named profiles (`[profiles.NAME]`) continue to use `server`.
+
+## Saved username and Chrome settings
+
+Use `[credentials]` or `[profiles.NAME.credentials]` to save your username.
+Set `username_only = true` to leave password entry and MFA to the browser.
+For Chrome, select `browser = "chrome"` in the profile or use `--browser chrome`.
+Top-level settings belong before any `[table]` headers, as shown above.
+
+| Setting | Effect |
+|---|---|
+| `token_cache` | Try a VPN cookie from the OS keyring before fresh SSO; defaults to `true`. |
+| `username_only` | Fill the saved username and leave password/MFA to the browser; no terminal VPN password/TOTP prompts. |
+| `chrome_channel` | Select installed Chrome/Edge. |
+| `chrome_user_data_dir` | Reuse a dedicated Chrome profile and its installed extensions. |
+
+`username_only` supports per-profile overrides in `[profiles.work]` as well as
+a top-level default. Explicit `false` in a profile overrides a top-level `true`.
+
+Local sudo authorization may still require your system password.
+On macOS/Linux, `token_cache` also enables session reuse after Ctrl-C or
+`disconnect`, including detached connections; no separate preservation settings are needed.
+
+A saved profile's `openconnect_args` is used by CLI, GUI, and TUI connections.
+CLI arguments after `--` are appended after the saved list, so adding an option
+does not drop your existing routing script.
+If the list includes `--script`, use an absolute executable path because sudo
+may use a different PATH.
 
 ## Auto-fill rules
 

@@ -473,6 +473,7 @@ def to_str(qval):
 
 def get_selectors(rules, credentials):
     statements = []
+    username_only = getattr(credentials, "username_only", False)
     for rule in rules:
         selector = json.dumps(rule.selector)
         if rule.action == "stop":
@@ -480,18 +481,14 @@ def get_selectors(rules, credentials):
                 f"""var elem = document.querySelector({selector}); if (elem) {{ return; }}"""
             )
         elif rule.fill:
-            value = json.dumps(getattr(credentials, rule.fill, None))
-            if value:
-                statements.append(
-                    f"""var elem = document.querySelector({selector}); if (elem) {{ elem.dispatchEvent(new Event("focus")); elem.value = {value}; elem.dispatchEvent(new Event("change", {{bubbles: true}})); elem.dispatchEvent(new Event("input", {{bubbles: true}})); elem.dispatchEvent(new Event("blur")); }}"""
-                )
-            else:
-                logger.warning(
-                    "Credential info not available",
-                    type=rule.fill,
-                    possibilities=dir(credentials),
-                )
-        elif rule.action == "click":
+            raw_value = getattr(credentials, rule.fill, None)
+            if raw_value is None or raw_value == "":
+                continue
+            value = json.dumps(raw_value)
+            statements.append(
+                f"""var elem = document.querySelector({selector}); if (elem && !elem.value) {{ elem.dispatchEvent(new Event("focus")); elem.value = {value}; elem.dispatchEvent(new Event("change", {{bubbles: true}})); elem.dispatchEvent(new Event("input", {{bubbles: true}})); elem.dispatchEvent(new Event("blur")); }}"""
+            )
+        elif rule.action == "click" and not username_only:
             statements.append(
                 f"""var elem = document.querySelector({selector}); if (elem) {{ elem.dispatchEvent(new Event("focus")); elem.click(); }}"""
             )

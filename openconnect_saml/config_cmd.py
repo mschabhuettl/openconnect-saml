@@ -71,7 +71,10 @@ def _should_redact(key: str) -> bool:
 def _redact(data):
     """Recursively redact secret values in a nested structure."""
     if isinstance(data, dict):
-        return {k: ("***" if _should_redact(k) and v else _redact(v)) for k, v in data.items()}
+        return {
+            k: ("***" if _should_redact(k) and v and not isinstance(v, bool) else _redact(v))
+            for k, v in data.items()
+        }
     if isinstance(data, list):
         return [_redact(v) for v in data]
     return data
@@ -165,8 +168,7 @@ def validate_config(path: Path) -> list[tuple[str, str]]:
         )
 
     # Default profile sanity
-    dp = raw.get("default_profile")
-    if dp and isinstance(dp, dict) and not dp.get("address"):
+    if cfg.default_profile is not None and not cfg.default_profile.address:
         issues.append(("error", "'default_profile' is missing 'address'"))
 
     # Timeout / port ranges

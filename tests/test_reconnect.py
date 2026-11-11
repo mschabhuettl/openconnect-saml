@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
+from openconnect_saml import config, sessions
 from openconnect_saml.app import RECONNECT_BACKOFF, _run_with_reconnect
 
 
@@ -55,6 +59,56 @@ class TestRunWithReconnect:
         cfg.on_connect = ""
         cfg.on_disconnect = ""
         return cfg
+
+    @pytest.mark.parametrize("outcome", [0, 1, "interrupt"])
+    def test_exit_cleans_up_its_recorded_session(self, tmp_path, monkeypatch, outcome):
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        args = self._make_args(profile_name="work")
+        cfg = config.Config(profiles={"work": {"server": "https://vpn.invalid"}})
+        host = config.HostProfile("vpn.invalid", "", "")
+
+        def connect(*positional, **options):
+            options["on_pid"](999999)
+            assert sessions.session_file("work").exists()
+            if outcome == "interrupt":
+                raise KeyboardInterrupt
+            return outcome
+
+        with patch("openconnect_saml.app.run_openconnect", side_effect=connect):
+            result = _run_with_reconnect(args, cfg, MagicMock(), host, max_retries=1)
+        assert result == (1 if outcome == 1 else 0)
+        assert not sessions.session_file("work").exists()
+
+    def test_exit_does_not_remove_an_unrelated_session_record(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        sessions.record(sessions.Session(profile="work", server="vpn.invalid", pid=os.getpid()))
+        args = self._make_args(profile_name="work")
+        cfg = config.Config(profiles={"work": {"server": "https://vpn.invalid"}})
+        host = config.HostProfile("vpn.invalid", "", "")
+        with patch("openconnect_saml.app.run_openconnect", return_value=0):
+            assert _run_with_reconnect(args, cfg, MagicMock(), host) == 0
+        assert sessions.load("work") is not None
+
+    def test_exit_keeps_a_new_connection_record_for_the_same_profile(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        args = self._make_args(profile_name="work")
+        cfg = config.Config(profiles={"work": {"server": "https://vpn.invalid"}})
+
+        def connect(*positional, **options):
+            options["on_pid"](999999)
+            sessions.record(
+                sessions.Session(profile="work", server="other.invalid", pid=os.getpid())
+            )
+            return 0
+
+        with patch("openconnect_saml.app.run_openconnect", side_effect=connect):
+            assert (
+                _run_with_reconnect(
+                    args, cfg, MagicMock(), config.HostProfile("vpn.invalid", "", "")
+                )
+                == 0
+            )
+        assert sessions.load("work").server == "other.invalid"
 
     @patch("openconnect_saml.app.run_openconnect", return_value=0)
     @patch("openconnect_saml.app.handle_disconnect")
